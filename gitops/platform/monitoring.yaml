@@ -20,7 +20,7 @@ spec:
         valueFiles:
           - $values/helm/platform/monitoring/values-dev.yaml
     # Values source: our infra repo
-    - repoURL: https://github.com/mb-news-summarynews-feed-infra.git
+    - repoURL: https://github.com/mb-news-summary/news-feed-infra.git
       targetRevision: main
       ref: values
 
