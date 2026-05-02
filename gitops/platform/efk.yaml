@@ -21,7 +21,7 @@ spec:
         releaseName: elasticsearch
         valueFiles:
           - $values/helm/platform/efk/elasticsearch-values-dev.yaml
-    - repoURL: https://github.com/your-org/news-feed-infra.git
+    - repoURL: https://github.com/mb-news-summarynews-feed-infra.git
       targetRevision: main
       ref: values
   destination:
@@ -53,7 +53,7 @@ spec:
         releaseName: kibana
         valueFiles:
           - $values/helm/platform/efk/kibana-values-dev.yaml
-    - repoURL: https://github.com/your-org/news-feed-infra.git
+    - repoURL: https://github.com/mb-news-summarynews-feed-infra.git
       targetRevision: main
       ref: values
   destination:
@@ -85,7 +85,7 @@ spec:
         releaseName: fluent-bit
         valueFiles:
           - $values/helm/platform/efk/fluent-bit-values-dev.yaml
-    - repoURL: https://github.com/your-org/news-feed-infra.git
+    - repoURL: https://github.com/mb-news-summarynews-feed-infra.git
       targetRevision: main
       ref: values
   destination:

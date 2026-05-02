@@ -19,7 +19,7 @@ spec:
         releaseName: ingress-nginx
         valueFiles:
           - $values/helm/platform/nginx-ingress/values-dev.yaml
-    - repoURL: https://github.com/your-org/news-feed-infra.git
+    - repoURL: https://github.com/mb-news-summarynews-feed-infra.git
       targetRevision: main
       ref: values
 

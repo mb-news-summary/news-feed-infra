@@ -14,7 +14,7 @@ spec:
   project: platform
 
   source:
-    repoURL: https://github.com/your-org/news-feed-infra.git
+    repoURL: https://github.com/mb-news-summarynews-feed-infra.git
     targetRevision: main
     # Applies every YAML file under k8s/cert-manager/ — currently just
     # cluster-issuer.yaml. The Cloudflare API token Secret it references
