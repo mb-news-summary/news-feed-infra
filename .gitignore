@@ -39,3 +39,7 @@ override.tf.json
 # Ignore CLI configuration files
 .terraformrc
 terraform.rc
+
+# exclude othe files
+.DS_Store
+gsm-secrets-version.sh
