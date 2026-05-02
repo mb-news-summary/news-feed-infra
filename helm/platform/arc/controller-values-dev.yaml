@@ -1,0 +1,32 @@
+# helm/platform/arc/controller-values-dev.yaml
+#
+# Actions Runner Controller (ARC) v2 — controller component.
+# The controller manages runner scale sets and talks to the GitHub API.
+#
+# Install:
+#   helm repo add arc https://actions-runner-controller.github.io/actions-runner-controller
+#   helm install arc arc/gha-runner-scale-set-controller \
+#     -f controller-values-dev.yaml -n arc-systems --create-namespace
+
+replicaCount: 1
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+# Metrics endpoint for Prometheus scraping.
+metrics:
+  controllerManagerAddr: ":8080"
+  listenerAddr: ":8080"
+  listenerEndpoint: "/metrics"
+
+serviceAccount:
+  create: true
+  name: arc-controller
+
+# The controller itself does not need Workload Identity — it only talks to
+# the Kubernetes API and GitHub. Runners use WI to push to Artifact Registry.

@@ -1,0 +1,80 @@
+# helm/platform/efk/elasticsearch-values-dev.yaml
+#
+# Values for Elasticsearch — the log storage and search engine.
+#
+# We use the official Elastic Helm chart (not Bitnami) because it's maintained
+# by Elastic and maps 1:1 to the upstream release cadence.
+#
+# Install with:
+#   helm repo add elastic https://helm.elastic.co
+#   helm repo update
+#   kubectl create namespace logging
+#   helm install elasticsearch elastic/elasticsearch \
+#     -f elasticsearch-values-dev.yaml -n logging
+
+# ---------------------------------------------------------------------------
+# Cluster topology
+# ---------------------------------------------------------------------------
+# For dev: single-node Elasticsearch. No replicas, no dedicated master/data
+# split. This saves resources but has NO resilience — acceptable for dev.
+# For prod: use 3 master + 2 data + 1 ingest minimum.
+replicas: 1
+
+# Minimum master nodes — with 1 replica, set to 1.
+# This avoids split-brain (impossible with 1 node anyway).
+minimumMasterNodes: 1
+
+# ---------------------------------------------------------------------------
+# Resources — keep small for dev
+# ---------------------------------------------------------------------------
+resources:
+  requests:
+    cpu: 200m
+    memory: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+
+# JVM heap = half the memory limit. 512m is the minimum viable for dev.
+# Increase to -Xmx1g if you see OOMKilled events on the ES pod.
+esJavaOpts: "-Xmx512m -Xms512m"
+
+# ---------------------------------------------------------------------------
+# Storage
+# ---------------------------------------------------------------------------
+volumeClaimTemplate:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 10Gi
+
+# ---------------------------------------------------------------------------
+# Security — disabled for dev simplicity
+# ---------------------------------------------------------------------------
+# In prod, enable xpack.security and configure TLS + authentication.
+protocol: http
+esConfig:
+  elasticsearch.yml: |
+    xpack.security.enabled: false
+    xpack.security.enrollment.enabled: false
+
+# ---------------------------------------------------------------------------
+# Networking
+# ---------------------------------------------------------------------------
+service:
+  type: ClusterIP
+
+# httpPort is the REST API port that Kibana and Fluent Bit connect to.
+httpPort: 9200
+transportPort: 9300
+
+# ---------------------------------------------------------------------------
+# Pod settings
+# ---------------------------------------------------------------------------
+# Elasticsearch needs vm.max_map_count=262144. The init container sets this.
+sysctlInitContainer:
+  enabled: true
+
+# Anti-affinity: "soft" allows multiple ES pods on the same node in dev.
+# Use "hard" in prod to spread across nodes.
+antiAffinity: "soft"

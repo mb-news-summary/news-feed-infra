@@ -1,0 +1,32 @@
+# ConfigMap that holds the DB init script.
+# Bitnami PostgreSQL runs scripts from this ConfigMap on first boot via
+# `primary.initdb.scriptsConfigMap`.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: omnifeed-postgres-initdb
+  labels:
+    {{- include "omnifeed.labels" . | nindent 4 }}
+data:
+  init.sql: |
+    CREATE TABLE IF NOT EXISTS news_articles (
+        id BIGSERIAL PRIMARY KEY,
+        external_id TEXT NOT NULL UNIQUE,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        summary TEXT NOT NULL,
+        url TEXT NOT NULL,
+        published_at TIMESTAMPTZ NOT NULL,
+        source_name TEXT NOT NULL DEFAULT '',
+        source_url TEXT NOT NULL DEFAULT '',
+        domain TEXT NOT NULL DEFAULT '',
+        country TEXT NOT NULL DEFAULT '',
+        importance_score DOUBLE PRECISION NOT NULL DEFAULT 0,
+        raw_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_news_articles_published_at ON news_articles (published_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_news_articles_domain ON news_articles (domain);
+    CREATE INDEX IF NOT EXISTS idx_news_articles_country ON news_articles (country);

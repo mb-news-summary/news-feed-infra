@@ -1,0 +1,40 @@
+# helm/platform/cert-manager/values-dev.yaml
+#
+# cert-manager — automatically obtains and renews TLS certificates from
+# Let's Encrypt using the Cloudflare DNS-01 challenge.
+#
+# Why DNS-01 and not HTTP-01?
+#   When Cloudflare proxy (orange cloud) is enabled, Let's Encrypt cannot
+#   reach your GKE pods directly over HTTP to verify domain ownership.
+#   DNS-01 proves ownership by creating a TXT record in Cloudflare's DNS API
+#   — no inbound connection to the cluster required.
+#
+# Flow:
+#   cert-manager → Cloudflare API (creates _acme-challenge TXT record)
+#   Let's Encrypt reads the TXT record → issues certificate
+#   cert-manager stores cert in a K8s Secret → nginx-ingress serves it
+
+installCRDs: true   # install CRDs as part of the Helm release
+
+replicaCount: 1
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+webhook:
+  replicaCount: 1
+
+cainjector:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi

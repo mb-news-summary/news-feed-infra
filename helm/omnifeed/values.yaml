@@ -1,0 +1,177 @@
+# helm/omnifeed/values.yaml
+#
+# DEFAULT values for the omnifeed umbrella chart.
+# Override per-environment with values-dev.yaml, values-prod.yaml, etc.
+
+# ---------------------------------------------------------------------------
+# Global settings shared across all subcharts
+# ---------------------------------------------------------------------------
+global:
+  imagePullPolicy: Always
+  imagePullSecrets: []
+  environment: dev
+  gcpProjectId: "news-feed-omnifeed"
+  gcpRegion: "europe-west1"
+  gkeClusterName: "omnifeed-dev-cluster"
+
+# ---------------------------------------------------------------------------
+# api-gateway
+# ---------------------------------------------------------------------------
+api-gateway:
+  replicaCount: 1
+  image:
+    repository: "europe-west1-docker.pkg.dev/news-feed-omnifeed/omnifeed-dev-docker-registry/api-gateway"
+    tag: "latest"
+  port: 8080
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  env:
+    PORT: "8080"
+    REDIS_DB: "0"
+    CACHE_TTL_SECONDS: "300"
+  secretName: "omnifeed-api-gateway-secrets"
+  serviceAccount:
+    gcpServiceAccount: "omnifeed-dev-api-gateway@news-feed-omnifeed.iam.gserviceaccount.com"
+  serviceMonitor:
+    enabled: true
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+  ingress:
+    enabled: false
+    className: ""
+    host: "api.omnifeed.example.com"
+    annotations: {}
+    tls: []
+
+# ---------------------------------------------------------------------------
+# frontend
+# ---------------------------------------------------------------------------
+frontend:
+  replicaCount: 1
+  image:
+    repository: "europe-west1-docker.pkg.dev/news-feed-omnifeed/omnifeed-dev-docker-registry/frontend"
+    tag: "latest"
+  port: 80
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+  serviceAccount:
+    gcpServiceAccount: ""
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 70
+  ingress:
+    enabled: false
+    className: ""
+    host: "omnifeed.example.com"
+    annotations: {}
+    tls: []
+
+# ---------------------------------------------------------------------------
+# worker-fetcher
+# ---------------------------------------------------------------------------
+worker-fetcher:
+  replicaCount: 1
+  image:
+    repository: "europe-west1-docker.pkg.dev/news-feed-omnifeed/omnifeed-dev-docker-registry/worker-fetcher"
+    tag: "latest"
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  env:
+    RABBITMQ_QUEUE: "raw_news_queue"
+    NEWS_API_BASE_URL: "https://gnews.io/api/v4/top-headlines"
+    FETCH_TOPICS: "world,technology,business,science,health,sports,entertainment,politics"
+    FETCH_LANGUAGE: "en"
+    FETCH_COUNTRIES: "us,gb"
+    FETCH_MAX_RESULTS: "50"
+    FETCH_INTERVAL_SECONDS: "3600"
+    REQUEST_TIMEOUT_SECONDS: "20"
+    RUN_ONCE: "false"
+    RABBITMQ_HEARTBEAT_SECONDS: "120"
+    RABBITMQ_RETRY_DELAY_SECONDS: "5"
+  secretName: "omnifeed-worker-fetcher-secrets"
+  serviceAccount:
+    gcpServiceAccount: "omnifeed-dev-worker-fetcher@news-feed-omnifeed.iam.gserviceaccount.com"
+
+# ---------------------------------------------------------------------------
+# worker-summarizer
+# ---------------------------------------------------------------------------
+worker-summarizer:
+  replicaCount: 1
+  image:
+    repository: "europe-west1-docker.pkg.dev/news-feed-omnifeed/omnifeed-dev-docker-registry/worker-summarizer"
+    tag: "latest"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  env:
+    RABBITMQ_QUEUE: "raw_news_queue"
+    REDIS_DB: "0"
+    LLM_PROVIDER: "gemini"
+    GEMINI_MODEL: "gemini-2.0-flash"
+    REQUEST_TIMEOUT_SECONDS: "20"
+  secretName: "omnifeed-worker-summarizer-secrets"
+  serviceAccount:
+    gcpServiceAccount: "omnifeed-dev-worker-summarizer@news-feed-omnifeed.iam.gserviceaccount.com"
+
+# ---------------------------------------------------------------------------
+# Bitnami PostgreSQL
+# ---------------------------------------------------------------------------
+postgresql:
+  enabled: true
+  auth:
+    database: news_feed
+    username: news
+    password: "news"
+  primary:
+    persistence:
+      size: 5Gi
+    initdb:
+      scriptsConfigMap: omnifeed-postgres-initdb
+
+# ---------------------------------------------------------------------------
+# Bitnami Redis
+# ---------------------------------------------------------------------------
+redis:
+  enabled: true
+  architecture: standalone
+  auth:
+    enabled: false
+  master:
+    persistence:
+      size: 2Gi
+
+# ---------------------------------------------------------------------------
+# Bitnami RabbitMQ
+# ---------------------------------------------------------------------------
+rabbitmq:
+  enabled: true
+  auth:
+    username: guest
+    password: guest
+  persistence:
+    size: 2Gi

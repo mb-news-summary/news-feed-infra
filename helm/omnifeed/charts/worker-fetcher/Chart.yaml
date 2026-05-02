@@ -1,0 +1,5 @@
+apiVersion: v2
+name: worker-fetcher
+description: Python worker — fetches news from GNews API and publishes to RabbitMQ
+version: 0.1.0
+type: application

@@ -1,0 +1,127 @@
+# helm/platform/monitoring/alerts/omnifeed.yaml
+#
+# PrometheusRule for omnifeed application alerts.
+# Apply after kube-prometheus-stack is installed:
+#   kubectl apply -f omnifeed.yaml -n monitoring
+
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: omnifeed-alerts
+  namespace: monitoring
+  labels:
+    release: monitoring  # must match the kube-prometheus-stack release name
+spec:
+  groups:
+    - name: omnifeed.api-gateway
+      interval: 30s
+      rules:
+        - alert: ApiGatewayDown
+          expr: |
+            absent(up{job="omnifeed-api-gateway"}) or
+            up{job="omnifeed-api-gateway"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            team: omnifeed
+          annotations:
+            summary: "API Gateway is down"
+            description: "omnifeed API Gateway has been unreachable for > 2 minutes."
+
+        - alert: ApiGatewayHighErrorRate
+          expr: |
+            rate(http_requests_total{job="omnifeed-api-gateway", status=~"5.."}[5m])
+            /
+            rate(http_requests_total{job="omnifeed-api-gateway"}[5m]) > 0.05
+          for: 5m
+          labels:
+            severity: warning
+            team: omnifeed
+          annotations:
+            summary: "API Gateway error rate > 5%"
+            description: "HTTP 5xx rate is {{ humanizePercentage $value }} over the last 5 minutes."
+
+        - alert: ApiGatewayHighLatency
+          expr: |
+            histogram_quantile(0.95,
+              rate(http_request_duration_seconds_bucket{job="omnifeed-api-gateway"}[5m])
+            ) > 2
+          for: 5m
+          labels:
+            severity: warning
+            team: omnifeed
+          annotations:
+            summary: "API Gateway p95 latency > 2s"
+            description: "95th percentile latency is {{ $value | humanizeDuration }}."
+
+    - name: omnifeed.workers
+      interval: 60s
+      rules:
+        - alert: WorkerFetcherDown
+          expr: |
+            absent(kube_deployment_status_replicas_available{
+              namespace="omnifeed",
+              deployment=~".*worker-fetcher.*"
+            }) or
+            kube_deployment_status_replicas_available{
+              namespace="omnifeed",
+              deployment=~".*worker-fetcher.*"
+            } == 0
+          for: 5m
+          labels:
+            severity: warning
+            team: omnifeed
+          annotations:
+            summary: "Worker Fetcher has no available replicas"
+            description: "No news will be fetched while the fetcher worker is down."
+
+        - alert: WorkerSummarizerDown
+          expr: |
+            absent(kube_deployment_status_replicas_available{
+              namespace="omnifeed",
+              deployment=~".*worker-summarizer.*"
+            }) or
+            kube_deployment_status_replicas_available{
+              namespace="omnifeed",
+              deployment=~".*worker-summarizer.*"
+            } == 0
+          for: 5m
+          labels:
+            severity: warning
+            team: omnifeed
+          annotations:
+            summary: "Worker Summarizer has no available replicas"
+            description: "Articles will not be summarized while the summarizer worker is down."
+
+    - name: omnifeed.infrastructure
+      interval: 60s
+      rules:
+        - alert: RabbitMQQueueDepthHigh
+          expr: |
+            rabbitmq_queue_messages{queue="raw_news_queue"} > 1000
+          for: 15m
+          labels:
+            severity: warning
+            team: omnifeed
+          annotations:
+            summary: "RabbitMQ raw_news_queue depth > 1000"
+            description: "Queue depth is {{ $value }}. Summarizer may be falling behind."
+
+        - alert: PostgresDiskUsageHigh
+          expr: |
+            kubelet_volume_stats_used_bytes{
+              namespace="omnifeed",
+              persistentvolumeclaim=~"data-omnifeed-postgresql-0"
+            }
+            /
+            kubelet_volume_stats_capacity_bytes{
+              namespace="omnifeed",
+              persistentvolumeclaim=~"data-omnifeed-postgresql-0"
+            } > 0.80
+          for: 10m
+          labels:
+            severity: warning
+            team: omnifeed
+          annotations:
+            summary: "PostgreSQL disk usage > 80%"
+            description: "Disk usage is {{ humanizePercentage $value }}. Consider increasing PVC size."

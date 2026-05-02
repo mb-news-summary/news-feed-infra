@@ -1,0 +1,118 @@
+# helm/platform/arc/runner-set-values-dev.yaml
+#
+# ARC v2 Runner Scale Set — the pool of GitHub Actions self-hosted runners.
+#
+# Architecture:
+#   - Each runner pod has two containers: the runner itself and a Docker-in-Docker
+#     (DinD) daemon. The runner talks to DinD via TLS on localhost:2376.
+#   - Pods land exclusively on the "runner" node pool (taint toleration below).
+#   - Workload Identity: the runner's GSA has roles/artifactregistry.writer,
+#     so `gcloud auth configure-docker` works without any stored credentials.
+#
+# Prerequisites (created once, not via Helm):
+#   kubectl create secret generic arc-github-secret \
+#     --namespace arc-runners \
+#     --from-literal=github_token=ghp_XXXX
+#
+# Install:
+#   helm install omnifeed-runner-set arc/gha-runner-scale-set \
+#     -f runner-set-values-dev.yaml -n arc-runners --create-namespace
+
+# GitHub org or repo URL this runner set registers to.
+# Replace with your actual org/repo URL.
+githubConfigUrl: "https://github.com/your-org"
+
+# Secret containing the GitHub PAT with Actions scope.
+githubConfigSecret: arc-github-secret
+
+# Runner label used in workflow `runs-on:` fields.
+runnerScaleSetName: "omnifeed-runner"
+
+# Scale to zero when no jobs are queued.
+minRunners: 0
+maxRunners: 5
+
+# ServiceAccount for runner pods — annotated for Workload Identity.
+serviceAccount:
+  name: omnifeed-runner-set
+  annotations:
+    iam.gke.io/gcp-service-account: "omnifeed-dev-gha-runner@news-feed-omnifeed.iam.gserviceaccount.com"
+
+template:
+  spec:
+    # Tolerate the runner node pool taint so pods can land there.
+    tolerations:
+      - key: workload
+        value: ci
+        effect: NoSchedule
+
+    # Prefer runner nodes; fall back to general nodes if runner pool is scaling.
+    nodeSelector:
+      workload: ci
+
+    initContainers:
+      # ARC requires this init container to copy runner binaries into the shared volume.
+      - name: init-dind-externals
+        image: ghcr.io/actions/actions-runner:latest
+        command: ["cp", "-r", "-v", "/home/runner/externals/.", "/home/runner/tmpDir/"]
+        volumeMounts:
+          - name: dind-externals
+            mountPath: /home/runner/tmpDir
+
+    containers:
+      # Primary runner container — executes workflow steps.
+      - name: runner
+        image: ghcr.io/actions/actions-runner:latest
+        env:
+          - name: DOCKER_HOST
+            value: tcp://localhost:2376
+          - name: DOCKER_TLS_VERIFY
+            value: "1"
+          - name: DOCKER_CERT_PATH
+            value: /certs/client
+          # Make gcloud available for Artifact Registry auth.
+          - name: CLOUDSDK_CORE_PROJECT
+            value: news-feed-omnifeed
+        volumeMounts:
+          - name: dind-cert
+            mountPath: /certs/client
+            readOnly: true
+          - name: dind-externals
+            mountPath: /home/runner/externals
+            readOnly: true
+        resources:
+          requests:
+            cpu: 500m
+            memory: 512Mi
+          limits:
+            cpu: 2000m
+            memory: 4Gi
+
+      # Docker-in-Docker daemon — handles all `docker build/push` commands.
+      - name: dind
+        image: docker:26-dind
+        securityContext:
+          privileged: true  # required for DinD
+        env:
+          - name: DOCKER_TLS_CERTDIR
+            value: /certs
+        volumeMounts:
+          - name: dind-cert
+            mountPath: /certs/client
+          - name: dind-storage
+            mountPath: /var/lib/docker
+        resources:
+          requests:
+            cpu: 500m
+            memory: 512Mi
+          limits:
+            cpu: 2000m
+            memory: 4Gi
+
+    volumes:
+      - name: dind-cert
+        emptyDir: {}
+      - name: dind-storage
+        emptyDir: {}
+      - name: dind-externals
+        emptyDir: {}

@@ -1,0 +1,119 @@
+# helm/platform/monitoring/values-dev.yaml
+#
+# Values for kube-prometheus-stack (Prometheus + Grafana + Alertmanager).
+#
+# Install with:
+#   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+#   helm repo update
+#   kubectl create namespace monitoring
+#   helm install monitoring prometheus-community/kube-prometheus-stack \
+#     -f values-dev.yaml -n monitoring
+#
+# Access Grafana:
+#   kubectl -n monitoring port-forward svc/monitoring-grafana 3000:80
+#   Open http://localhost:3000 (admin / see password below)
+
+# ---------------------------------------------------------------------------
+# Prometheus
+# ---------------------------------------------------------------------------
+prometheus:
+  prometheusSpec:
+    # Retention: how long to keep metrics. 7d is plenty for dev.
+    retention: 7d
+
+    # Storage: persist metrics across pod restarts.
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: [ "ReadWriteOnce" ]
+          resources:
+            requests:
+              storage: 10Gi
+
+    # Resource limits — keep small for dev.
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+
+    # Scrape all ServiceMonitors across all namespaces.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+
+# ---------------------------------------------------------------------------
+# Grafana
+# ---------------------------------------------------------------------------
+grafana:
+  enabled: true
+
+  # Admin credentials — change in prod or use existingSecret.
+  adminUser: admin
+  adminPassword: omnifeed-dev-grafana
+
+  # Persistence: save dashboards across restarts.
+  persistence:
+    enabled: true
+    size: 2Gi
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  # Pre-loaded dashboards — these come bundled with kube-prometheus-stack.
+  # They cover: cluster health, node resources, pod resources, networking.
+  defaultDashboardsEnabled: true
+
+  # Ingress with TLS. Replace marianbodnar.uk with your Cloudflare domain.
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hosts:
+      - grafana.marianbodnar.uk # ← replace
+    tls:
+      - secretName: grafana-tls
+        hosts:
+          - grafana.marianbodnar.uk # ← replace (must match hosts above)
+    annotations:
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+
+  # Sidecar: automatically discovers ConfigMaps with label
+  # `grafana_dashboard: "1"` and loads them as dashboards.
+  sidecar:
+    dashboards:
+      enabled: true
+      searchNamespace: ALL
+
+# ---------------------------------------------------------------------------
+# Alertmanager
+# ---------------------------------------------------------------------------
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+    storage:
+      volumeClaimTemplate:
+        spec:
+          accessModes: [ "ReadWriteOnce" ]
+          resources:
+            requests:
+              storage: 1Gi
+
+# ---------------------------------------------------------------------------
+# Node exporter & kube-state-metrics (enabled by default)
+# ---------------------------------------------------------------------------
+nodeExporter:
+  enabled: true
+
+kubeStateMetrics:
+  enabled: true

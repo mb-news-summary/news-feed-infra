@@ -1,0 +1,123 @@
+# helm/platform/efk/fluent-bit-values-dev.yaml
+#
+# Values for Fluent Bit — the lightweight log collector.
+#
+# Fluent Bit runs as a DaemonSet (one pod per node). It tails container logs
+# from /var/log/containers/*.log, enriches them with Kubernetes metadata
+# (pod name, namespace, labels), and ships them to Elasticsearch.
+#
+# Why Fluent Bit instead of Fluentd?
+#   Fluent Bit is ~10x lighter on memory (~15MB vs ~150MB), written in C,
+#   and purpose-built for log forwarding. Fluentd is more flexible for
+#   complex routing/transformation, but Fluent Bit covers 95% of use cases.
+#
+# Install with:
+#   helm repo add fluent https://fluent.github.io/helm-charts
+#   helm repo update
+#   helm install fluent-bit fluent/fluent-bit \
+#     -f fluent-bit-values-dev.yaml -n logging
+
+# ---------------------------------------------------------------------------
+# DaemonSet resources — one pod per node, keep lightweight
+# ---------------------------------------------------------------------------
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+# ---------------------------------------------------------------------------
+# Fluent Bit pipeline configuration
+# ---------------------------------------------------------------------------
+# The pipeline is: INPUT → FILTER → OUTPUT
+#
+# INPUT:  tail container logs from /var/log/containers/
+# FILTER: enrich with Kubernetes metadata (pod, namespace, labels)
+# OUTPUT: send to Elasticsearch
+config:
+  # Service: global settings for the Fluent Bit engine.
+  service: |
+    [SERVICE]
+        Daemon        Off
+        Flush         5
+        Log_Level     info
+        Parsers_File  /fluent-bit/etc/parsers.conf
+        HTTP_Server   On
+        HTTP_Listen   0.0.0.0
+        HTTP_Port     2020
+        Health_Check  On
+
+  # Input: tail all container logs.
+  # The Tag is set to kube.* so the kubernetes filter can match it.
+  inputs: |
+    [INPUT]
+        Name              tail
+        Tag               kube.*
+        Path              /var/log/containers/*.log
+        Parser            cri
+        DB                /var/log/flb_kube.db
+        Mem_Buf_Limit     10MB
+        Skip_Long_Lines   On
+        Refresh_Interval  10
+
+  # Filters: enrich logs with K8s metadata.
+  # kubernetes filter auto-detects pod name/namespace from the file path
+  # and adds labels + annotations as fields.
+  filters: |
+    [FILTER]
+        Name                kubernetes
+        Match               kube.*
+        Kube_URL            https://kubernetes.default.svc:443
+        Kube_CA_File        /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        Kube_Token_File     /var/run/secrets/kubernetes.io/serviceaccount/token
+        Kube_Tag_Prefix     kube.var.log.containers.
+        Merge_Log           On
+        Merge_Log_Key       log_processed
+        Keep_Log            Off
+        K8S-Logging.Parser  On
+        K8S-Logging.Exclude Off
+        Labels              On
+        Annotations         Off
+
+    [FILTER]
+        Name    modify
+        Match   kube.*
+        Remove  stream
+        Remove  _p
+
+  # Output: send to Elasticsearch.
+  # The index is "fluent-bit-YYYY.MM.DD" — one index per day.
+  # In prod, consider using ILM (Index Lifecycle Management) to auto-delete
+  # old indices after N days.
+  outputs: |
+    [OUTPUT]
+        Name            es
+        Match           kube.*
+        Host            elasticsearch-master
+        Port            9200
+        HTTP_User
+        HTTP_Passwd
+        Logstash_Format On
+        Logstash_Prefix fluent-bit
+        Replace_Dots    On
+        Suppress_Type_Name On
+        Retry_Limit     3
+        tls             Off
+
+  # Custom parsers (CRI format is the default for containerd-based runtimes
+  # like GKE).
+  customParsers: |
+    [PARSER]
+        Name        cri
+        Format      regex
+        Regex       ^(?<time>[^ ]+) (?<stream>stdout|stderr) (?<logtag>[^ ]*) (?<log>.*)$
+        Time_Key    time
+        Time_Format %Y-%m-%dT%H:%M:%S.%L%z
+
+# ---------------------------------------------------------------------------
+# Tolerations — run on all nodes including tainted ones (masters, preemptible)
+# ---------------------------------------------------------------------------
+tolerations:
+  - operator: Exists

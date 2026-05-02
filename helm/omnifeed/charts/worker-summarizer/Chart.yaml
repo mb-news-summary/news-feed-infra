@@ -1,0 +1,5 @@
+apiVersion: v2
+name: worker-summarizer
+description: Python worker — consumes from RabbitMQ, summarizes articles via LLM, writes to Postgres/Redis
+version: 0.1.0
+type: application
