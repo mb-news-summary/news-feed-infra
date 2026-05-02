@@ -1,0 +1,56 @@
+# atlantis.yaml
+#
+# NOTE: We use GitHub Actions for Terraform CI/CD instead of in-cluster
+# Atlantis. See:
+#   - .github/workflows/terragrunt-plan.yml   (runs on PRs)
+#   - .github/workflows/terragrunt-apply.yml  (runs on merge to main)
+#   - docs/INFRASTRUCTURE.md                  (full setup docs)
+#
+# This file is kept for reference in case you switch to Atlantis later.
+# To use Atlantis, uncomment the config below and follow the Atlantis
+# Helm setup in helm/platform/atlantis/.
+
+# version: 3
+# projects:
+#   - name: dev-project
+#     dir: live/environments/dev/project
+#     workflow: terragrunt
+#     autoplan:
+#       when_modified: ["*.hcl", "*.yaml", "../../common.yaml", "../../root.hcl"]
+#       enabled: true
+#
+#   - name: dev-vpc
+#     dir: live/environments/dev/networking/vpc
+#     workflow: terragrunt
+#     autoplan:
+#       when_modified: ["*.hcl", "*.yaml", "../../../common.yaml", "../../../root.hcl"]
+#       enabled: true
+#
+#   - name: dev-cloud-nat
+#     dir: live/environments/dev/networking/cloud-nat
+#     workflow: terragrunt
+#     autoplan:
+#       when_modified: ["*.hcl", "*.yaml", "../../../common.yaml", "../../../root.hcl"]
+#       enabled: true
+#
+#   - name: dev-gke-cluster
+#     dir: live/environments/dev/gke-cluster
+#     workflow: terragrunt
+#     autoplan:
+#       when_modified: ["*.hcl", "*.yaml", "../../common.yaml", "../../root.hcl"]
+#       enabled: true
+#
+# workflows:
+#   terragrunt:
+#     plan:
+#       steps:
+#         - env:
+#             name: TERRAGRUNT_TFPATH
+#             command: 'which terraform'
+#         - run: terragrunt plan -no-color -out=$PLANFILE
+#     apply:
+#       steps:
+#         - env:
+#             name: TERRAGRUNT_TFPATH
+#             command: 'which terraform'
+#         - run: terragrunt apply -no-color $PLANFILE
