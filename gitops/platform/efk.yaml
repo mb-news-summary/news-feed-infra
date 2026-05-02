@@ -1,0 +1,99 @@
+# EFK Stack — Elasticsearch + Fluent Bit + Kibana
+# Three separate Applications so they can be synced independently.
+# Elasticsearch must be healthy before Kibana is deployed (ensured by syncWave).
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: elasticsearch
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  sources:
+    - repoURL: https://helm.elastic.co
+      chart: elasticsearch
+      targetRevision: "8.5.1"
+      helm:
+        releaseName: elasticsearch
+        valueFiles:
+          - $values/helm/platform/efk/elasticsearch-values-dev.yaml
+    - repoURL: https://github.com/your-org/news-feed-infra.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: logging
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kibana
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  sources:
+    - repoURL: https://helm.elastic.co
+      chart: kibana
+      targetRevision: "8.5.1"
+      helm:
+        releaseName: kibana
+        valueFiles:
+          - $values/helm/platform/efk/kibana-values-dev.yaml
+    - repoURL: https://github.com/your-org/news-feed-infra.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: logging
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: fluent-bit
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  sources:
+    - repoURL: https://fluent.github.io/helm-charts
+      chart: fluent-bit
+      targetRevision: "0.49.x"
+      helm:
+        releaseName: fluent-bit
+        valueFiles:
+          - $values/helm/platform/efk/fluent-bit-values-dev.yaml
+    - repoURL: https://github.com/your-org/news-feed-infra.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: logging
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

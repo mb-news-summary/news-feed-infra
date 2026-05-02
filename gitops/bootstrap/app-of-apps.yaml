@@ -1,0 +1,43 @@
+# gitops/bootstrap/app-of-apps.yaml
+#
+# Root Application — the "App of Apps" that manages every other ArgoCD
+# Application in this cluster.
+#
+# Bootstrap once:
+#   kubectl apply -f gitops/bootstrap/app-of-apps.yaml
+#
+# After that, ALL other applications (platform tools + omnifeed) are managed
+# by ArgoCD itself. No more `helm install` from a laptop.
+#
+# ArgoCD watches the gitops/platform/ and gitops/apps/ directories in this
+# repo and creates/updates/deletes Applications whenever you push to main.
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/your-org/news-feed-infra.git
+    targetRevision: main
+    # Watch the whole gitops/ tree — changes to any child Application auto-sync.
+    path: gitops
+    directory:
+      recurse: true
+      include: "*.yaml"
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+
+  syncPolicy:
+    automated:
+      prune: true      # remove Applications deleted from git
+      selfHeal: true   # revert manual kubectl edits
+    syncOptions:
+      - CreateNamespace=true

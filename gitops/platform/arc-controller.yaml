@@ -1,0 +1,32 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: arc-controller
+  namespace: argocd
+  annotations:
+    # Controller must exist before runner sets can register.
+    argocd.argoproj.io/sync-wave: "-2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  sources:
+    - repoURL: https://actions-runner-controller.github.io/actions-runner-controller
+      chart: gha-runner-scale-set-controller
+      targetRevision: "0.12.x"
+      helm:
+        releaseName: arc
+        valueFiles:
+          - $values/helm/platform/arc/controller-values-dev.yaml
+    - repoURL: https://github.com/your-org/news-feed-infra.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: arc-systems
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

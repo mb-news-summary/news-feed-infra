@@ -1,0 +1,41 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cluster-issuer
+  namespace: argocd
+  annotations:
+    # Wave -2: runs after cert-manager (wave -3) registers its CRDs.
+    # If cert-manager pods aren't fully ready yet, ArgoCD retries
+    # automatically (see syncPolicy.retry below).
+    argocd.argoproj.io/sync-wave: "-2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+
+  source:
+    repoURL: https://github.com/your-org/news-feed-infra.git
+    targetRevision: main
+    # Applies every YAML file under k8s/cert-manager/ — currently just
+    # cluster-issuer.yaml. The Cloudflare API token Secret it references
+    # must be created imperatively before this syncs (it is never in git).
+    path: k8s/cert-manager
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cert-manager
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      # cert-manager CRDs sometimes take a few seconds after the Helm
+      # release is marked Healthy. Retry up to 5 times with backoff.
+      limit: 5
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m
