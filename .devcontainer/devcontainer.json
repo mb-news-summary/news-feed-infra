@@ -1,0 +1,37 @@
+{
+  "name": "NewsFeed Infra",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "remoteUser": "ubuntu",
+  "mounts": [
+    "source=${localEnv:HOME}/.config/gcloud,target=/home/ubuntu/.config/gcloud,type=bind",
+    "source=${localEnv:HOME}/.ssh,target=/home/ubuntu/.ssh/,type=bind"
+  ],
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "zsh",
+        "editor.formatOnSave": true,
+        "[terraform]": {
+          "editor.defaultFormatter": "hashicorp.terraform"
+        },
+        "[terragrunt]": {
+          "editor.defaultFormatter": "mathieunls.terragrunt"
+        }
+      },
+      "extensions": [
+        "hashicorp.terraform", // Official Terraform support
+        "mathieunls.terragrunt", // Terragrunt syntax highlighting
+        "ms-python.python", // Python support
+        "davidanson.vscode-markdownlint", // Helps keep your READMEs clean
+        "hashicorp.hcl",
+        "ms-kubernetes-tools.vscode-kubernetes-tools", // K8s cluster explorer, manifest IntelliSense
+        "redhat.vscode-yaml" // YAML schema validation (helps with K8s manifests)
+      ]
+    }
+  },
+  "postCreateCommand": "pipx install pre-commit==3.6.2 && pre-commit install",
+
+  "postStartCommand": "sudo chown ubuntu:ubuntu /home/ubuntu/.config && sudo chown -R ubuntu:ubuntu /home/ubuntu/.kube /home/ubuntu/.cache 2>/dev/null || true"
+}
