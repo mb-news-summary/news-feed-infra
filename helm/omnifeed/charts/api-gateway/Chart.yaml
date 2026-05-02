@@ -1,0 +1,5 @@
+apiVersion: v2
+name: api-gateway
+description: Go REST API — serves news articles, caches with Redis, stores in Postgres
+version: 0.1.0
+type: application

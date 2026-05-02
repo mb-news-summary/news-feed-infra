@@ -1,0 +1,54 @@
+# helm/platform/nginx-ingress/values-dev.yaml
+#
+# NGINX Ingress Controller for GKE.
+# Creates ONE GCP LoadBalancer with a single external IP.
+# All routing (argocd / grafana / kibana / omnifeed) is done inside the
+# cluster by nginx — far cheaper than one GCP LB per service.
+#
+# After install, get the external IP with:
+#   kubectl get svc ingress-nginx-controller -n ingress-nginx
+#
+# For quick testing without a real domain use nip.io — a free wildcard DNS:
+#   argocd.<EXTERNAL_IP>.nip.io  →  resolves to EXTERNAL_IP automatically
+#   grafana.<EXTERNAL_IP>.nip.io
+#   etc.
+
+controller:
+  replicaCount: 1
+
+  # GKE external LoadBalancer — assigns a public IP automatically.
+  service:
+    type: LoadBalancer
+    annotations:
+      # Remove the annotation below to get an ephemeral IP (default).
+      # Add it back with a reserved static IP name for a stable IP:
+      # kubernetes.io/ingress.regional-static-ip-name: "omnifeed-dev-ip"
+      networking.gke.io/load-balancer-type: "External"
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+  # Metrics endpoint so Prometheus can scrape nginx stats.
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      namespace: monitoring
+      additionalLabels:
+        release: monitoring
+
+  # Default SSL certificate — nginx returns 404 for unknown hosts without this.
+  # Uses a self-signed cert by default. Replace with cert-manager issuer in prod.
+  defaultBackend:
+    enabled: true
+
+  config:
+    # Forward real client IPs to apps behind the LB.
+    use-forwarded-headers: "true"
+    compute-full-forwarded-for: "true"
+    use-proxy-protocol: "false"

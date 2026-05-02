@@ -1,0 +1,89 @@
+# helm/platform/efk/kibana-values-dev.yaml
+#
+# Values for Kibana — the log visualization UI.
+#
+# Kibana connects to Elasticsearch and provides:
+#   - Log search and filtering (Discover tab)
+#   - Dashboards and visualizations
+#   - Index pattern management
+#   - Saved queries and alerts
+#
+# Install with:
+#   helm install kibana elastic/kibana \
+#     -f kibana-values-dev.yaml -n logging
+#
+# Access Kibana:
+#   kubectl -n logging port-forward svc/kibana-kibana 5601:5601
+#   Open http://localhost:5601
+
+# ---------------------------------------------------------------------------
+# Resources — keep modest for dev
+# ---------------------------------------------------------------------------
+resources:
+  requests:
+    cpu: 200m
+    memory: 512Mi
+  limits:
+    cpu: 500m
+    memory: 1Gi
+
+# ---------------------------------------------------------------------------
+# Elasticsearch connection
+# ---------------------------------------------------------------------------
+# Points to the Elasticsearch service created by the ES Helm chart.
+elasticsearchHosts: "http://elasticsearch-master:9200"
+
+# ---------------------------------------------------------------------------
+# Replicas — 1 for dev
+# ---------------------------------------------------------------------------
+replicas: 1
+
+# ---------------------------------------------------------------------------
+# Service
+# ---------------------------------------------------------------------------
+service:
+  type: ClusterIP
+  port: 5601
+
+# Ingress with TLS. Replace marianbodnar.uk with your Cloudflare domain.
+ingress:
+  enabled: true
+  ingressClassName: nginx
+  hosts:
+    - host: kibana.marianbodnar.uk # ← replace
+      paths:
+        - path: /
+  tls:
+    - secretName: kibana-tls
+      hosts:
+        - kibana.marianbodnar.uk # ← replace
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+
+# ---------------------------------------------------------------------------
+# Kibana configuration
+# ---------------------------------------------------------------------------
+kibanaConfig:
+  kibana.yml: |
+    server.name: kibana
+    server.host: "0.0.0.0"
+    # Disable security for dev (matches ES xpack.security.enabled: false).
+    # In prod, enable TLS and RBAC.
+    xpack.security.enabled: false
+    # Disable telemetry
+    telemetry.optIn: false
+    telemetry.enabled: false
+
+# ---------------------------------------------------------------------------
+# Health check
+# ---------------------------------------------------------------------------
+healthCheckPath: "/app/kibana"
+
+# ---------------------------------------------------------------------------
+# Readiness probe — give Kibana time to start (it's slow)
+# ---------------------------------------------------------------------------
+readinessProbe:
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  failureThreshold: 10

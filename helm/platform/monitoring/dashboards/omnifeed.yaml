@@ -1,0 +1,134 @@
+# helm/platform/monitoring/dashboards/omnifeed.yaml
+#
+# Grafana dashboard ConfigMap for the omnifeed application.
+# The kube-prometheus-stack sidecar detects ConfigMaps with label
+# grafana_dashboard="1" in any namespace and loads them automatically.
+#
+# Apply:
+#   kubectl apply -f omnifeed.yaml -n monitoring
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: omnifeed-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  omnifeed.json: |
+    {
+      "title": "Omnifeed Application",
+      "uid": "omnifeed-app",
+      "tags": ["omnifeed", "application"],
+      "refresh": "30s",
+      "time": { "from": "now-1h", "to": "now" },
+      "panels": [
+        {
+          "id": 1,
+          "title": "API Request Rate",
+          "type": "timeseries",
+          "gridPos": { "x": 0, "y": 0, "w": 8, "h": 6 },
+          "targets": [
+            {
+              "expr": "rate(http_requests_total{job=\"omnifeed-api-gateway\"}[5m])",
+              "legendFormat": "{{method}} {{status}}"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "title": "API p50 / p95 / p99 Latency",
+          "type": "timeseries",
+          "gridPos": { "x": 8, "y": 0, "w": 8, "h": 6 },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.50, rate(http_request_duration_seconds_bucket{job=\"omnifeed-api-gateway\"}[5m]))",
+              "legendFormat": "p50"
+            },
+            {
+              "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job=\"omnifeed-api-gateway\"}[5m]))",
+              "legendFormat": "p95"
+            },
+            {
+              "expr": "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{job=\"omnifeed-api-gateway\"}[5m]))",
+              "legendFormat": "p99"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "title": "HTTP Error Rate",
+          "type": "stat",
+          "gridPos": { "x": 16, "y": 0, "w": 8, "h": 6 },
+          "targets": [
+            {
+              "expr": "rate(http_requests_total{job=\"omnifeed-api-gateway\", status=~\"5..\"}[5m]) / rate(http_requests_total{job=\"omnifeed-api-gateway\"}[5m])",
+              "legendFormat": "5xx rate"
+            }
+          ],
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "thresholds": {
+                "steps": [
+                  { "color": "green", "value": 0 },
+                  { "color": "yellow", "value": 0.01 },
+                  { "color": "red", "value": 0.05 }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": 4,
+          "title": "Pod CPU Usage",
+          "type": "timeseries",
+          "gridPos": { "x": 0, "y": 6, "w": 12, "h": 6 },
+          "targets": [
+            {
+              "expr": "rate(container_cpu_usage_seconds_total{namespace=\"omnifeed\", container!=\"\", container!=\"POD\"}[5m])",
+              "legendFormat": "{{pod}} / {{container}}"
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "title": "Pod Memory Usage",
+          "type": "timeseries",
+          "gridPos": { "x": 12, "y": 6, "w": 12, "h": 6 },
+          "targets": [
+            {
+              "expr": "container_memory_working_set_bytes{namespace=\"omnifeed\", container!=\"\", container!=\"POD\"}",
+              "legendFormat": "{{pod}} / {{container}}"
+            }
+          ],
+          "fieldConfig": { "defaults": { "unit": "bytes" } }
+        },
+        {
+          "id": 6,
+          "title": "RabbitMQ Queue Depth (raw_news_queue)",
+          "type": "timeseries",
+          "gridPos": { "x": 0, "y": 12, "w": 12, "h": 6 },
+          "targets": [
+            {
+              "expr": "rabbitmq_queue_messages{queue=\"raw_news_queue\"}",
+              "legendFormat": "messages"
+            }
+          ]
+        },
+        {
+          "id": 7,
+          "title": "PostgreSQL Active Connections",
+          "type": "timeseries",
+          "gridPos": { "x": 12, "y": 12, "w": 12, "h": 6 },
+          "targets": [
+            {
+              "expr": "pg_stat_database_numbackends{datname=\"news_feed\"}",
+              "legendFormat": "connections"
+            }
+          ]
+        }
+      ],
+      "schemaVersion": 38
+    }

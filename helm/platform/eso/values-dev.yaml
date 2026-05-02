@@ -1,0 +1,54 @@
+# helm/platform/eso/values-dev.yaml
+#
+# External Secrets Operator — syncs GCP Secret Manager secrets into
+# Kubernetes Secrets automatically.
+#
+# Flow:
+#   GCP Secret Manager → (Workload Identity) → ESO → K8s Secret → Pod env
+#
+# The ESO service account is annotated with the omnifeed-dev-eso GSA which
+# has roles/secretmanager.secretAccessor (granted in the workload-identity TG unit).
+#
+# Install:
+#   helm repo add external-secrets https://charts.external-secrets.io
+#   helm install external-secrets external-secrets/external-secrets \
+#     -f values-dev.yaml -n external-secrets --create-namespace
+
+installCRDs: true
+
+replicaCount: 1
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+serviceAccount:
+  create: true
+  name: external-secrets
+  annotations:
+    # Workload Identity binding — allows ESO to read GCP Secret Manager.
+    iam.gke.io/gcp-service-account: "omnifeed-dev-eso@news-feed-omnifeed.iam.gserviceaccount.com"
+
+webhook:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+certController:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi

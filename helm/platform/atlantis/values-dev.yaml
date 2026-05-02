@@ -1,0 +1,128 @@
+# helm/platform/atlantis/values-dev.yaml
+#
+# Values for Atlantis — Terraform/Terragrunt PR automation.
+#
+# Atlantis watches your GitHub PRs for Terraform changes, runs `plan`
+# automatically, and lets you `apply` by commenting on the PR.
+# This gives you infrastructure-as-code review with plan output right
+# in the PR.
+#
+# Install with:
+#   helm repo add runatlantis https://runatlantis.github.io/helm-charts
+#   helm repo update
+#   kubectl create namespace atlantis
+#   helm install atlantis runatlantis/atlantis -f values-dev.yaml -n atlantis
+#
+# Prerequisites:
+#   1. A GitHub personal access token (or GitHub App) with repo permissions
+#   2. A webhook secret (random string shared between GitHub and Atlantis)
+#   3. GCP service account credentials for Terraform to authenticate
+#
+# Create the secret:
+#   kubectl -n atlantis create secret generic atlantis-creds \
+#     --from-literal=github-token='ghp_your_token' \
+#     --from-literal=github-secret='your_webhook_secret'
+
+# ---------------------------------------------------------------------------
+# Core settings
+# ---------------------------------------------------------------------------
+# GitHub org and user that Atlantis will operate as.
+orgAllowlist: "github.com/your-org/*"
+
+# Reference the secret we created above.
+github:
+  user: "your-github-username"
+  token: ""           # left empty — use existingSecret
+  secret: ""          # left empty — use existingSecret
+
+existingSecret: "atlantis-creds"
+
+# ---------------------------------------------------------------------------
+# Atlantis server config
+# ---------------------------------------------------------------------------
+# The repo config tells Atlantis how to handle Terragrunt repos.
+# This is equivalent to your atlantis.yaml but server-side.
+repoConfig: |
+  ---
+  repos:
+    - id: "/.*/news-feed-infra/"
+      allowed_overrides: [workflow, apply_requirements]
+      allow_custom_workflows: true
+  workflows:
+    terragrunt:
+      plan:
+        steps:
+          - env:
+              name: TERRAGRUNT_TFPATH
+              command: 'which terraform'
+          - run: terragrunt plan -no-color -out=$PLANFILE
+      apply:
+        steps:
+          - env:
+              name: TERRAGRUNT_TFPATH
+              command: 'which terraform'
+          - run: terragrunt apply -no-color $PLANFILE
+
+# ---------------------------------------------------------------------------
+# Resources
+# ---------------------------------------------------------------------------
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# ---------------------------------------------------------------------------
+# Persistence — Atlantis stores plan files and locks here.
+# ---------------------------------------------------------------------------
+dataStorage: 5Gi
+
+# ---------------------------------------------------------------------------
+# Service — ClusterIP for dev; expose via Ingress in prod.
+# For dev, use port-forward:
+#   kubectl -n atlantis port-forward svc/atlantis 4141:80
+# ---------------------------------------------------------------------------
+service:
+  type: ClusterIP
+  port: 80
+
+# ---------------------------------------------------------------------------
+# Environment variables for Terraform/Terragrunt
+# ---------------------------------------------------------------------------
+environment:
+  # Tell Terragrunt where Terraform lives.
+  - name: TERRAGRUNT_TFPATH
+    value: /usr/local/bin/terraform
+  # GCP credentials — mount a service account key or use Workload Identity.
+  # For Workload Identity (recommended):
+  #   1. Create a GCP SA with the right IAM roles
+  #   2. Bind it to the Atlantis K8s SA
+  #   3. Set GOOGLE_APPLICATION_CREDENTIALS or let ADC auto-detect
+  # For SA key (simpler for dev):
+  #   - name: GOOGLE_APPLICATION_CREDENTIALS
+  #     value: /var/secrets/google/key.json
+
+# ---------------------------------------------------------------------------
+# Service Account — for Workload Identity binding
+# ---------------------------------------------------------------------------
+serviceAccount:
+  create: true
+  annotations: {}
+  # For Workload Identity, add:
+  # annotations:
+  #   iam.gke.io/gcp-service-account: atlantis@<project-id>.iam.gserviceaccount.com
+
+# ---------------------------------------------------------------------------
+# Container image — Atlantis with Terraform + Terragrunt pre-installed.
+# The default image has Terraform. You may need a custom image with
+# Terragrunt if the default doesn't include it.
+# ---------------------------------------------------------------------------
+# image:
+#   repository: ghcr.io/runatlantis/atlantis
+#   tag: latest
+# Or use a custom image that includes Terragrunt:
+# image:
+#   repository: your-registry/atlantis-terragrunt
+#   tag: latest

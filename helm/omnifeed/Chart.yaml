@@ -1,0 +1,29 @@
+# helm/omnifeed/Chart.yaml
+#
+# Umbrella chart — ties together the 4 app services and 3 infra dependencies.
+# `helm dependency update` downloads the Bitnami subcharts into charts/.
+apiVersion: v2
+name: omnifeed
+description: News feed application — API gateway, frontend, workers, and supporting infra
+version: 0.1.0
+appVersion: "0.1.0"
+type: application
+
+dependencies:
+  # --- Bitnami subcharts for stateful services ---
+  # These are pulled from the Bitnami OCI registry.
+  # In prod you'd replace these with GCP managed services (Cloud SQL, etc.).
+  - name: postgresql
+    version: "16.4.1"
+    repository: oci://registry-1.docker.io/bitnamicharts
+    condition: postgresql.enabled
+
+  - name: redis
+    version: "20.6.2"
+    repository: oci://registry-1.docker.io/bitnamicharts
+    condition: redis.enabled
+
+  - name: rabbitmq
+    version: "15.1.2"
+    repository: oci://registry-1.docker.io/bitnamicharts
+    condition: rabbitmq.enabled

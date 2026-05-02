@@ -1,0 +1,135 @@
+# helm/platform/argocd/values-dev.yaml
+#
+# Values for Argo CD — GitOps continuous delivery for Kubernetes.
+#
+# ArgoCD watches your git repo(s) and automatically applies changes to
+# the cluster when you push. Instead of `helm install` from your laptop,
+# you push to git and ArgoCD handles the deploy.
+#
+# Install with:
+#   helm repo add argo https://argoproj.github.io/argo-helm
+#   helm repo update
+#   kubectl create namespace argocd
+#   helm install argocd argo/argo-cd -f values-dev.yaml -n argocd
+#
+# Get the admin password:
+#   kubectl -n argocd get secret argocd-initial-admin-secret \
+#     -o jsonpath="{.data.password}" | base64 -d; echo
+#
+# Access the UI:
+#   kubectl -n argocd port-forward svc/argocd-server 8443:443
+#   Open https://localhost:8443 (admin / password from above)
+
+# ---------------------------------------------------------------------------
+# Server (API + UI)
+# ---------------------------------------------------------------------------
+server:
+  service:
+    type: ClusterIP
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  # Insecure mode: ArgoCD serves plain HTTP.
+  # TLS is terminated by nginx-ingress, so this is safe.
+  extraArgs:
+    - --insecure
+
+  # Ingress with TLS via cert-manager + Let's Encrypt.
+  # Replace marianbodnar.uk with your actual Cloudflare domain.
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hostname: argocd.marianbodnar.uk # ← replace
+    annotations:
+      # cert-manager will obtain a Let's Encrypt certificate for this host.
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+      # Tell nginx the backend speaks plain HTTP (ArgoCD runs with --insecure).
+      nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+      # Force HTTPS — redirect any plain HTTP request to HTTPS.
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    tls: true
+    # cert-manager stores the certificate in this secret.
+    secretName: argocd-tls
+
+# ---------------------------------------------------------------------------
+# Repo Server (clones git repos, renders manifests)
+# ---------------------------------------------------------------------------
+repoServer:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# ---------------------------------------------------------------------------
+# Application Controller (reconciles desired state vs actual state)
+# ---------------------------------------------------------------------------
+controller:
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+# ---------------------------------------------------------------------------
+# Redis (used internally by ArgoCD for caching)
+# ---------------------------------------------------------------------------
+redis:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
+# ---------------------------------------------------------------------------
+# DEX (SSO) — disabled for dev; enable in prod with Google/GitHub OIDC.
+# ---------------------------------------------------------------------------
+dex:
+  enabled: false
+
+# ---------------------------------------------------------------------------
+# ApplicationSet controller — generates Applications from templates.
+# Useful when you have many microservices or environments.
+# ---------------------------------------------------------------------------
+applicationSet:
+  enabled: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
+# ---------------------------------------------------------------------------
+# Notifications — send deploy status to Slack, GitHub, etc.
+# Disabled for dev; enable in prod.
+# ---------------------------------------------------------------------------
+notifications:
+  enabled: false
+
+# ---------------------------------------------------------------------------
+# Config: repositories and project
+# ---------------------------------------------------------------------------
+configs:
+  # Repositories ArgoCD can pull from.
+  repositories:
+    # Your infra repo (contains the Helm charts).
+    news-feed-infra:
+      url: https://github.com/your-org/news-feed-infra.git
+      # For private repos, use an SSH key or GitHub App:
+      # sshPrivateKeySecret:
+      #   name: argocd-repo-creds
+      #   key: sshPrivateKey
+
+      # Default project settings.
+  params:
+    # Reconciliation interval — how often ArgoCD checks git for changes.
+    # 3 minutes is responsive enough for dev.
+    timeout.reconciliation: 180s
