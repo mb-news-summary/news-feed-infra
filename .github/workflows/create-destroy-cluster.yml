@@ -1,0 +1,51 @@
+name: Create/Destroy cluster
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "desc"
+        required: true
+        default: "apply"
+        type: choice
+        options:
+          - "apply"
+          - "destroy"
+
+env:
+  GCP_PROJECT_ID: "news-feed-omnifeed"
+  GCP_WORKLOAD_IDENTITY_PROVIDER: "projects/130729871135/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+  GCP_SERVICE_ACCOUNT: "github-actions@news-feed-omnifeed.gserviceaccount.com"
+  TERRAFORM_VERSION: "1.9.8"
+  TERRAGRUNT_VERSION: "0.99.2"
+
+jobs:
+  terragrunt:
+    runs-on: ubuntu-latest
+    name: "Run terragrunt apply"
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - name: Setup Terragrunt
+        run: |
+          curl -sLo /usr/local/bin/terragrunt \
+            "https://github.com/gruntwork-io/terragrunt/releases/download/v${TERRAGRUNT_VERSION}/terragrunt_linux_amd64"
+          chmod +x /usr/local/bin/terragrunt
+
+      - name: "Run terragrunt ${{ inputs.action }}"
+        run: |
+          cd live/environments/dev/gke-cluster
+          terragrunt ${{ inputs.action }} -auto-approve

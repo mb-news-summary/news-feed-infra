@@ -1,0 +1,236 @@
+# .github/workflows/terragrunt-plan.yml
+#
+# Runs `terragrunt plan` on every PR that touches files under live/.
+# Posts the plan output as a PR comment so reviewers can see exactly
+# what will change before approving.
+#
+# Authentication: uses Workload Identity Federation (WIF) — no JSON keys.
+# See docs/INFRASTRUCTURE.md for WIF setup instructions.
+
+name: "Terragrunt Plan"
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "live/**"
+
+# Only one plan per PR at a time — cancel in-progress runs.
+concurrency:
+  group: terragrunt-plan-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+# WIF requires these permissions to exchange the GitHub OIDC token.
+permissions:
+  contents: read
+  id-token: write        # required for WIF
+  pull-requests: write   # required to post PR comments
+
+env:
+  # ── GCP settings ──
+  # These must match your WIF setup (see docs/INFRASTRUCTURE.md).
+  GCP_PROJECT_ID: "bootstrap-terragrunt-gcs-01"
+  GCP_WORKLOAD_IDENTITY_PROVIDER: "projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+  GCP_SERVICE_ACCOUNT: "github-actions@bootstrap-terragrunt-gcs-01.iam.gserviceaccount.com"
+
+  # ── Tool versions ──
+  TERRAFORM_VERSION: "1.9.8"
+  TERRAGRUNT_VERSION: "0.99.2"
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────
+  # Step 1: Detect which terragrunt units changed
+  # ─────────────────────────────────────────────────────────────────────
+  detect-changes:
+    name: "Detect changed units"
+    runs-on: ubuntu-latest
+    outputs:
+      units: ${{ steps.find-units.outputs.units }}
+      has_changes: ${{ steps.find-units.outputs.has_changes }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history for accurate diff
+
+      - name: Find changed terragrunt units
+        id: find-units
+        run: |
+          # Get list of changed files in live/ compared to the base branch.
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- 'live/')
+
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+
+          # Find unique directories that contain a terragrunt.hcl.
+          # This handles changes to env.yaml, common.yaml, root.hcl, etc.
+          UNITS="[]"
+          UNIT_DIRS=""
+
+          for file in $CHANGED_FILES; do
+            dir=$(dirname "$file")
+            # Walk up the directory tree to find the nearest terragrunt.hcl
+            while [ "$dir" != "." ] && [ "$dir" != "live" ]; do
+              if [ -f "$dir/terragrunt.hcl" ]; then
+                # Skip stack-root files (skip = true) — they are not plannable units.
+                if ! grep -q "^skip\s*=\s*true" "$dir/terragrunt.hcl"; then
+                  UNIT_DIRS="$UNIT_DIRS $dir"
+                fi
+                break
+              fi
+              dir=$(dirname "$dir")
+            done
+          done
+
+          # Global configs (common.yaml, root.hcl, env.yaml) affect every unit —
+          # plan all of them. Exclude stack-root files (skip = true) from the list.
+          if echo "$CHANGED_FILES" | grep -qE "(common\.yaml|root\.hcl|env\.yaml)"; then
+            echo "Global config changed — planning all units"
+            UNIT_DIRS=$(find live/environments -name "terragrunt.hcl" -not -path "*.terragrunt-cache*" \
+              | xargs grep -rL "^skip\s*=\s*true" \
+              | xargs -I{} dirname {})
+          fi
+
+          # Deduplicate and sort.
+          UNIQUE_DIRS=$(echo "$UNIT_DIRS" | tr ' ' '\n' | sort -u | grep -v '^$')
+
+          if [ -z "$UNIQUE_DIRS" ]; then
+            echo "No terragrunt units affected"
+            echo "units=[]" >> "$GITHUB_OUTPUT"
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          else
+            # Convert to JSON array for the matrix.
+            JSON_ARRAY=$(echo "$UNIQUE_DIRS" | jq -R -s -c 'split("\n") | map(select(. != ""))')
+            echo "units=$JSON_ARRAY" >> "$GITHUB_OUTPUT"
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            echo "Units to plan:"
+            echo "$UNIQUE_DIRS"
+          fi
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Step 2: Run terragrunt plan for each changed unit
+  # ─────────────────────────────────────────────────────────────────────
+  plan:
+    name: "Plan: ${{ matrix.unit }}"
+    needs: detect-changes
+    if: needs.detect-changes.outputs.has_changes == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        unit: ${{ fromJson(needs.detect-changes.outputs.units) }}
+      fail-fast: false   # plan all units even if one fails
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Authenticate to GCP via Workload Identity Federation ──
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      # ── Install Terraform + Terragrunt ──
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false   # don't wrap — Terragrunt handles it
+
+      - name: Setup Terragrunt
+        run: |
+          curl -sLo /usr/local/bin/terragrunt \
+            "https://github.com/gruntwork-io/terragrunt/releases/download/v${TERRAGRUNT_VERSION}/terragrunt_linux_amd64"
+          chmod +x /usr/local/bin/terragrunt
+          terragrunt --version
+
+      # ── Run plan ──
+      - name: Terragrunt Init
+        working-directory: ${{ matrix.unit }}
+        run: terragrunt init -no-color 2>&1 | tee /tmp/init.log
+
+      - name: Terragrunt Plan
+        id: plan
+        working-directory: ${{ matrix.unit }}
+        run: |
+          set +e
+          terragrunt plan -no-color 2>&1 | tee /tmp/plan.log
+          PLAN_EXIT_CODE=${PIPESTATUS[0]}
+          echo "exit_code=$PLAN_EXIT_CODE" >> "$GITHUB_OUTPUT"
+
+          # Truncate very long plans to fit GitHub comment limits (65536 chars).
+          PLAN_OUTPUT=$(cat /tmp/plan.log)
+          if [ ${#PLAN_OUTPUT} -gt 60000 ]; then
+            PLAN_OUTPUT="${PLAN_OUTPUT:0:60000}
+
+          ... (truncated — full output in workflow logs)"
+          fi
+
+          # Write to file for the comment step.
+          echo "$PLAN_OUTPUT" > /tmp/plan_trimmed.log
+
+          exit $PLAN_EXIT_CODE
+        continue-on-error: true
+
+      # ── Post plan as PR comment ──
+      - name: Post plan to PR
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('/tmp/plan_trimmed.log', 'utf8');
+            const exitCode = '${{ steps.plan.outputs.exit_code }}';
+            const unit = '${{ matrix.unit }}';
+            const status = exitCode === '0' ? '✅' : '❌';
+
+            const body = `### ${status} Terragrunt Plan: \`${unit}\`
+
+            <details>
+            <summary>Click to expand plan output</summary>
+
+            \`\`\`hcl
+            ${plan}
+            \`\`\`
+
+            </details>
+
+            **Exit code:** ${exitCode}
+            **Triggered by:** @${{ github.actor }}
+            **Commit:** ${{ github.event.pull_request.head.sha }}
+            `;
+
+            // Find and update existing comment for this unit, or create new one.
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const marker = `Terragrunt Plan: \`${unit}\``;
+            const existing = comments.find(c => c.body.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body: body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body,
+              });
+            }
+
+      # ── Fail the job if plan failed ──
+      - name: Check plan result
+        if: steps.plan.outputs.exit_code != '0'
+        run: exit 1

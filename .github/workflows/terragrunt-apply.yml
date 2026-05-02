@@ -1,0 +1,146 @@
+# .github/workflows/terragrunt-apply.yml
+#
+# Runs `terragrunt apply` when a PR merges to main and the changed files
+# are under live/. Respects the dependency order so upstream units
+# (project → vpc → cloud-nat) are applied before downstream (gke-cluster).
+#
+# SAFETY: this runs automatically on merge. If you want manual approval,
+# add a GitHub Environment protection rule (see docs/INFRASTRUCTURE.md).
+
+name: "Terragrunt Apply"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "live/**"
+
+# Only one apply at a time — prevent concurrent state modifications.
+concurrency:
+  group: terragrunt-apply
+  cancel-in-progress: false   # DON'T cancel — let running applies finish
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  GCP_PROJECT_ID: "bootstrap-terragrunt-gcs-01"
+  GCP_WORKLOAD_IDENTITY_PROVIDER: "projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+  GCP_SERVICE_ACCOUNT: "github-actions@bootstrap-terragrunt-gcs-01.iam.gserviceaccount.com"
+  TERRAFORM_VERSION: "1.9.8"
+  TERRAGRUNT_VERSION: "0.99.2"
+
+jobs:
+  apply:
+    name: "Apply changed units"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - name: Setup Terragrunt
+        run: |
+          curl -sLo /usr/local/bin/terragrunt \
+            "https://github.com/gruntwork-io/terragrunt/releases/download/v${TERRAGRUNT_VERSION}/terragrunt_linux_amd64"
+          chmod +x /usr/local/bin/terragrunt
+          terragrunt --version
+
+      - name: Detect changed units
+        id: detect
+        run: |
+          CHANGED_FILES=$(git diff --name-only HEAD~1 -- 'live/')
+
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+
+          UNIT_DIRS=""
+          for file in $CHANGED_FILES; do
+            dir=$(dirname "$file")
+            while [ "$dir" != "." ] && [ "$dir" != "live" ]; do
+              if [ -f "$dir/terragrunt.hcl" ]; then
+                # Skip stack-root files (skip = true) — they are not deployable units.
+                if ! grep -q "^skip\s*=\s*true" "$dir/terragrunt.hcl"; then
+                  UNIT_DIRS="$UNIT_DIRS $dir"
+                fi
+                break
+              fi
+              dir=$(dirname "$dir")
+            done
+          done
+
+          # Global configs (common.yaml, root.hcl, env.yaml) affect every unit
+          # in the environment — run-all apply to catch everything.
+          if echo "$CHANGED_FILES" | grep -qE "(common\.yaml|root\.hcl|env\.yaml)"; then
+            echo "Global config changed — applying all units via run --all"
+            echo "run_all=true" >> "$GITHUB_OUTPUT"
+            echo "units=" >> "$GITHUB_OUTPUT"
+          else
+            UNIQUE_DIRS=$(echo "$UNIT_DIRS" | tr ' ' '\n' | sort -u | grep -v '^$')
+            echo "run_all=false" >> "$GITHUB_OUTPUT"
+            echo "units<<EOF" >> "$GITHUB_OUTPUT"
+            echo "$UNIQUE_DIRS" >> "$GITHUB_OUTPUT"
+            echo "EOF" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ── Apply: run --all (global config changed) ──
+      # --non-interactive replaces the old --terragrunt-non-interactive flag (renamed in v0.66).
+      - name: Terragrunt run --all apply (global change)
+        if: steps.detect.outputs.run_all == 'true'
+        working-directory: live/environments/dev
+        run: |
+          terragrunt run --all apply \
+            --non-interactive \
+            -no-color \
+            -auto-approve
+
+      # ── Apply: individual units in strict dependency order ──
+      # Order must match the dependency graph:
+      #   project → vpc → cloud-nat → gke-cluster
+      #   project → artifact-registry
+      #   project → secret-manager
+      #   project → workload-identity (needs project + gke for WI pool)
+      - name: Apply individual units (in dependency order)
+        if: steps.detect.outputs.run_all == 'false'
+        run: |
+          ORDERED_UNITS=(
+            "live/environments/dev/project"
+            "live/environments/dev/networking/vpc"
+            "live/environments/dev/networking/cloud-nat"
+            "live/environments/dev/gke-cluster"
+            "live/environments/dev/artifact-registry"
+            "live/environments/dev/secret-manager"
+            "live/environments/dev/workload-identity"
+          )
+
+          CHANGED_UNITS="${{ steps.detect.outputs.units }}"
+
+          for unit in "${ORDERED_UNITS[@]}"; do
+            if echo "$CHANGED_UNITS" | grep -q "^${unit}$"; then
+              echo ""
+              echo "══════════════════════════════════════════════════════"
+              echo "  Applying: $unit"
+              echo "══════════════════════════════════════════════════════"
+              cd "$GITHUB_WORKSPACE/$unit"
+              terragrunt init -no-color
+              terragrunt apply -no-color --non-interactive -auto-approve
+              cd "$GITHUB_WORKSPACE"
+            fi
+          done
