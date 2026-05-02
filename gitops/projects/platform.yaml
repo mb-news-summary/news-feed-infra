@@ -9,7 +9,7 @@ spec:
   description: Platform tools — monitoring, logging, secrets, CI runners
 
   sourceRepos:
-    - https://github.com/mb-news-summarynews-feed-infra.git
+    - https://github.com/mb-news-summary/news-feed-infra.git
     - https://kubernetes.github.io/ingress-nginx
     - https://charts.jetstack.io
     - https://prometheus-community.github.io/helm-charts
