@@ -1,0 +1,53 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: omnifeed
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: Omnifeed application — news aggregation and summarization platform
+
+  sourceRepos:
+    - https://github.com/your-org/news-feed-infra.git
+
+  destinations:
+    - namespace: omnifeed
+      server: https://kubernetes.default.svc
+
+  # Restrict which Kubernetes resources this project can manage.
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+
+  namespaceResourceWhitelist:
+    - group: apps
+      kind: Deployment
+    - group: ""
+      kind: Service
+    - group: ""
+      kind: ServiceAccount
+    - group: ""
+      kind: ConfigMap
+    - group: networking.k8s.io
+      kind: Ingress
+    - group: networking.k8s.io
+      kind: NetworkPolicy
+    - group: autoscaling
+      kind: HorizontalPodAutoscaler
+    - group: policy
+      kind: PodDisruptionBudget
+    - group: monitoring.coreos.com
+      kind: ServiceMonitor
+    - group: external-secrets.io
+      kind: ExternalSecret
+    - group: external-secrets.io
+      kind: ClusterSecretStore
+
+  roles:
+    - name: developer
+      description: Read-only access for developers
+      policies:
+        - p, proj:omnifeed:developer, applications, get, omnifeed/*, allow
+      groups:
+        - omnifeed-devs
