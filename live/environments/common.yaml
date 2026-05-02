@@ -1,0 +1,8 @@
+# environments/common.yaml
+organization_id: "828057377450"
+bucket_project_id: "bootstrap-terragrunt-gcs-01"
+terragrunt_state_bucket_name: "news-app-infra-terragrunt-state"
+state_bucket_location: "EU"
+default_region: "europe-west1"
+billing_account: "016D8A-BB164C-D03600"
+app_name: "omnifeed"
