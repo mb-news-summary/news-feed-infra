@@ -9,7 +9,7 @@ spec:
   description: Omnifeed application — news aggregation and summarization platform
 
   sourceRepos:
-    - https://github.com/your-org/news-feed-infra.git
+    - https://github.com/mb-news-summarynews-feed-infra.git
 
   destinations:
     - namespace: omnifeed

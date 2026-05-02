@@ -9,7 +9,7 @@ spec:
   project: omnifeed
 
   source:
-    repoURL: https://github.com/your-org/news-feed-infra.git
+    repoURL: https://github.com/mb-news-summarynews-feed-infra.git
     targetRevision: main
     path: helm/omnifeed
     helm:

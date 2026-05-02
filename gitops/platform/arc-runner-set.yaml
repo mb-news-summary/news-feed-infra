@@ -17,7 +17,7 @@ spec:
         releaseName: omnifeed-runner-set
         valueFiles:
           - $values/helm/platform/arc/runner-set-values-dev.yaml
-    - repoURL: https://github.com/your-org/news-feed-infra.git
+    - repoURL: https://github.com/mb-news-summarynews-feed-infra.git
       targetRevision: main
       ref: values
   destination:

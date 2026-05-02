@@ -23,7 +23,7 @@ spec:
   project: default
 
   source:
-    repoURL: https://github.com/your-org/news-feed-infra.git
+    repoURL: https://github.com/mb-news-summarynews-feed-infra.git
     targetRevision: main
     # Watch the whole gitops/ tree — changes to any child Application auto-sync.
     path: gitops
@@ -37,7 +37,7 @@ spec:
 
   syncPolicy:
     automated:
-      prune: true      # remove Applications deleted from git
-      selfHeal: true   # revert manual kubectl edits
+      prune: true # remove Applications deleted from git
+      selfHeal: true # revert manual kubectl edits
     syncOptions:
       - CreateNamespace=true
