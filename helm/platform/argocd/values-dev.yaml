@@ -48,8 +48,14 @@ server:
     hostname: argocd.marianbodnar.uk
     annotations:
       cert-manager.io/cluster-issuer: "letsencrypt-prod"
-    tls: true
-    secretName: argocd-tls
+    # tls: false → chart routes to port 80 (HTTP). Traefik terminates TLS
+    # externally so the backend must be plain HTTP, not HTTPS.
+    # tls: true would route to port 443 which doesn't work with --insecure.
+    tls: false
+    extraTls:
+      - hosts:
+          - argocd.marianbodnar.uk
+        secretName: argocd-tls
 
 # ---------------------------------------------------------------------------
 # Repo Server (clones git repos, renders manifests)
