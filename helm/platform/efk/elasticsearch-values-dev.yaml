@@ -75,6 +75,9 @@ esConfig:
     xpack.security.transport.ssl.enabled: false
     cluster.name: "omnifeed-logging"
     network.host: 0.0.0.0
+    # Tells ES it will never have peers — silences the headless-service
+    # discovery warning and bypasses bootstrap checks.
+    discovery.type: single-node
 
 # Override any Docker-image-level env vars that re-enable security.
 extraEnvs:
