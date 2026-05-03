@@ -6,7 +6,8 @@
   "remoteUser": "ubuntu",
   "mounts": [
     "source=${localEnv:HOME}/.config/gcloud,target=/home/ubuntu/.config/gcloud,type=bind",
-    "source=${localEnv:HOME}/.ssh,target=/home/ubuntu/.ssh/,type=bind"
+    "source=${localEnv:HOME}/.ssh,target=/home/ubuntu/.ssh/,type=bind",
+    "source=${localEnv:HOME}/.kube,target=/home/ubuntu/.kube,type=bind,consistency=cached"
   ],
   "customizations": {
     "vscode": {
