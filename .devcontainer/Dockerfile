@@ -6,6 +6,7 @@ ENV TFDOCS_VERSION=v0.21.0
 ENV K9S_VERSION=v0.32.7
 ENV HELM_VERSION=v3.16.3
 ENV KUSTOMIZE_VERSION=v5.5.0
+ENV ARGOCD_VERSION=v2.13.3
 
 # ---------------------------------------------------------------------------
 # Multi-arch support
@@ -82,27 +83,32 @@ RUN curl -Lo /tmp/kustomize.tar.gz \
   chmod +x /usr/local/bin/kustomize && \
   rm /tmp/kustomize.tar.gz
 
-# 8. Grant passwordless sudo
+# 8. Install ArgoCD CLI (arch-aware)
+RUN curl -Lo /usr/local/bin/argocd \
+    https://github.com/argoproj/argo-cd/releases/download/${ARGOCD_VERSION}/argocd-linux-${TARGETARCH} && \
+  chmod +x /usr/local/bin/argocd
+
+# 9. Grant passwordless sudo
 RUN echo "ubuntu ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
-# 9. Switch to ubuntu user BEFORE installing Oh My Zsh.
+# 10. Switch to ubuntu user BEFORE installing Oh My Zsh.
 # Pre-create .config so Docker doesn't create it as root when it sets up the
 # ~/.config/gcloud bind mount — that would block helm from writing ~/.config/helm.
 USER ubuntu
 RUN mkdir -p /home/ubuntu/.config /home/ubuntu/.kube /home/ubuntu/.cache
 
-# 10. Install Oh My Zsh and plugins
+# 11. Install Oh My Zsh and plugins
 RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended && \
   git clone https://github.com/zsh-users/zsh-autosuggestions ~/.oh-my-zsh/custom/plugins/zsh-autosuggestions && \
   git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ~/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting
 
-# 11. Enable plugins in .zshrc
+# 12. Enable plugins in .zshrc
 # kubectl: adds completion + aliases (k=kubectl, kgp=kubectl get pods, etc.)
 # helm: adds completion for helm commands
 # kustomize: adds completion for kustomize commands
 RUN sed -i 's/plugins=(git)/plugins=(git terraform gcloud kubectl helm zsh-autosuggestions zsh-syntax-highlighting)/' ~/.zshrc
 
-# 12. Custom aliases and environment
+# 13. Custom aliases and environment
 RUN cat >> ~/.zshrc <<'EOF'
 
 # --- Kubernetes aliases ---
