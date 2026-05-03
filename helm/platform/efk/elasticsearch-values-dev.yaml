@@ -35,3 +35,7 @@ sysctlInitContainer:
   enabled: true
 
 antiAffinity: "soft"
+
+# Single-node clusters are always yellow (replica shards can't be assigned).
+# Accept yellow so the readiness probe passes.
+clusterHealthCheckParams: "wait_for_status=yellow&timeout=5s"
