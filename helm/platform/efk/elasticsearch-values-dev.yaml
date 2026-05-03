@@ -51,12 +51,37 @@ volumeClaimTemplate:
 # ---------------------------------------------------------------------------
 # Security — disabled for dev simplicity
 # ---------------------------------------------------------------------------
-# In prod, enable xpack.security and configure TLS + authentication.
+# ES 8.x enables security by default in its Docker image. Three layers are
+# needed to fully disable it:
+#   1. protocol: http — chart uses HTTP for liveness/readiness probes
+#   2. esConfig — writes settings into elasticsearch.yml in the container
+#   3. extraEnvs — overrides any env-var defaults baked into the Docker image
+#
+# IMPORTANT: if the PVC was created while security was still on, the keystore
+# and TLS certs persisted to disk will keep security enabled on restart.
+# Delete the PVC and re-sync to reinitialise with a clean data directory:
+#
+#   kubectl delete statefulset elasticsearch-master -n logging --cascade=orphan
+#   kubectl delete pvc elasticsearch-master-elasticsearch-master-0 -n logging
+#   kubectl rollout restart statefulset/elasticsearch-master -n logging
+#   # or just re-sync the ArgoCD app
 protocol: http
+
 esConfig:
   elasticsearch.yml: |
     xpack.security.enabled: false
     xpack.security.enrollment.enabled: false
+    xpack.security.http.ssl.enabled: false
+    xpack.security.transport.ssl.enabled: false
+    cluster.name: "omnifeed-logging"
+    network.host: 0.0.0.0
+
+# Override any Docker-image-level env vars that re-enable security.
+extraEnvs:
+  - name: xpack.security.enabled
+    value: "false"
+  - name: ELASTIC_PASSWORD
+    value: ""
 
 # ---------------------------------------------------------------------------
 # Networking
