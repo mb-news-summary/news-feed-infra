@@ -43,3 +43,5 @@ terraform.rc
 # exclude othe files
 .DS_Store
 gsm-secrets-version.sh
+setup-dns.sh
+to-do.md
