@@ -80,11 +80,13 @@ esConfig:
     # rejects with a fatal error when discovery.type=single-node is set.
     # The headless-service discovery WARN is harmless — the cluster forms fine.
 
-# The chart always creates an ELASTIC_PASSWORD secret and injects it into the
-# probe script. Do NOT override it with an empty string — the probe checks for
-# its presence and exits if missing. With security disabled in esConfig the
-# password is never verified by ES anyway, so letting the chart manage it is
-# the correct approach.
+# The chart injects `xpack.security.enabled: true` as a container env var,
+# which takes precedence over esConfig (elasticsearch.yml). We override it
+# here by appending our own value — extraEnvs are added AFTER chart defaults
+# so our `false` wins. Do NOT touch ELASTIC_PASSWORD; the probe requires it.
+extraEnvs:
+  - name: "xpack.security.enabled"
+    value: "false"
 
 # ---------------------------------------------------------------------------
 # Networking
