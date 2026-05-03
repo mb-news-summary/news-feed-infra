@@ -44,17 +44,11 @@ server:
   # Replace marianbodnar.uk with your actual Cloudflare domain.
   ingress:
     enabled: true
-    ingressClassName: nginx
-    hostname: argocd.marianbodnar.uk # ← replace
+    ingressClassName: traefik
+    hostname: argocd.marianbodnar.uk
     annotations:
-      # cert-manager will obtain a Let's Encrypt certificate for this host.
       cert-manager.io/cluster-issuer: "letsencrypt-prod"
-      # Tell nginx the backend speaks plain HTTP (ArgoCD runs with --insecure).
-      nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
-      # Force HTTPS — redirect any plain HTTP request to HTTPS.
-      nginx.ingress.kubernetes.io/ssl-redirect: "true"
     tls: true
-    # cert-manager stores the certificate in this secret.
     secretName: argocd-tls
 
 # ---------------------------------------------------------------------------

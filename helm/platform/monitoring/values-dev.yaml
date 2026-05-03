@@ -73,16 +73,15 @@ grafana:
   # Ingress with TLS. Replace marianbodnar.uk with your Cloudflare domain.
   ingress:
     enabled: true
-    ingressClassName: nginx
+    ingressClassName: traefik
     hosts:
-      - grafana.marianbodnar.uk # ← replace
+      - grafana.marianbodnar.uk
     tls:
       - secretName: grafana-tls
         hosts:
-          - grafana.marianbodnar.uk # ← replace (must match hosts above)
+          - grafana.marianbodnar.uk
     annotations:
       cert-manager.io/cluster-issuer: "letsencrypt-prod"
-      nginx.ingress.kubernetes.io/ssl-redirect: "true"
 
   # Sidecar: automatically discovers ConfigMaps with label
   # `grafana_dashboard: "1"` and loads them as dashboards.

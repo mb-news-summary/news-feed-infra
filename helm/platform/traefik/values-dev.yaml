@@ -1,0 +1,80 @@
+# helm/platform/traefik/values-dev.yaml
+#
+# Traefik — the cloud-native reverse proxy / ingress controller.
+# Replaces nginx-ingress. One GCP LoadBalancer, all routing done inside the cluster.
+#
+# After install, get the external IP:
+#   kubectl get svc traefik -n traefik
+
+deployment:
+  replicas: 1
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+# ---------------------------------------------------------------------------
+# Entrypoints (ports Traefik listens on)
+# ---------------------------------------------------------------------------
+ports:
+  web:
+    port: 8000
+    expose:
+      default: true
+    exposedPort: 80
+    # Redirect all HTTP → HTTPS automatically
+    redirectTo:
+      port: websecure
+  websecure:
+    port: 8443
+    expose:
+      default: true
+    exposedPort: 443
+    tls:
+      enabled: true
+
+# ---------------------------------------------------------------------------
+# GKE external LoadBalancer
+# ---------------------------------------------------------------------------
+service:
+  type: LoadBalancer
+  annotations:
+    networking.gke.io/load-balancer-type: "External"
+
+# ---------------------------------------------------------------------------
+# IngressClass — makes "traefik" the class name used in Ingress resources
+# ---------------------------------------------------------------------------
+ingressClass:
+  enabled: true
+  isDefaultClass: true
+  name: traefik
+
+# ---------------------------------------------------------------------------
+# Providers — enable standard Kubernetes Ingress + Traefik CRD support
+# ---------------------------------------------------------------------------
+providers:
+  kubernetesCRD:
+    enabled: true
+    allowCrossNamespaceResources: true
+  kubernetesIngress:
+    enabled: true
+    allowExternalNameServices: true
+
+# ---------------------------------------------------------------------------
+# Metrics — scraped by Prometheus via ServiceMonitor
+# ---------------------------------------------------------------------------
+metrics:
+  prometheus:
+    entryPoint: metrics
+    addEntryPointsLabels: true
+    addRoutersLabels: true
+    addServicesLabels: true
+    serviceMonitor:
+      enabled: true
+      namespace: monitoring
+      additionalLabels:
+        release: monitoring

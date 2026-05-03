@@ -23,11 +23,10 @@ api-gateway:
     targetMemoryUtilizationPercentage: 80
   ingress:
     enabled: true
-    className: "nginx"
+    className: "traefik"
     host: "api.marianbodnar.uk" # ← replace with your Cloudflare domain
     annotations:
       cert-manager.io/cluster-issuer: "letsencrypt-prod"
-      nginx.ingress.kubernetes.io/ssl-redirect: "true"
     tls:
       - secretName: omnifeed-api-tls
         hosts:
@@ -45,11 +44,10 @@ frontend:
     targetCPUUtilizationPercentage: 70
   ingress:
     enabled: true
-    className: "nginx"
+    className: "traefik"
     host: "app.marianbodnar.uk" # ← replace with your Cloudflare domain
     annotations:
       cert-manager.io/cluster-issuer: "letsencrypt-prod"
-      nginx.ingress.kubernetes.io/ssl-redirect: "true"
     tls:
       - secretName: omnifeed-frontend-tls
         hosts:

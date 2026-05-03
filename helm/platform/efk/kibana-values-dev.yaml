@@ -48,7 +48,7 @@ service:
 # Ingress with TLS. Replace marianbodnar.uk with your Cloudflare domain.
 ingress:
   enabled: true
-  ingressClassName: nginx
+  ingressClassName: traefik
   hosts:
     - host: kibana.marianbodnar.uk # ← replace
       paths:
@@ -59,7 +59,6 @@ ingress:
         - kibana.marianbodnar.uk # ← replace
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
 
 # ---------------------------------------------------------------------------
 # Kibana configuration

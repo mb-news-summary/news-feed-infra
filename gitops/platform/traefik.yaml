@@ -1,10 +1,9 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: ingress-nginx
+  name: traefik
   namespace: argocd
   annotations:
-    # Deploy before apps so the IngressClass exists when other apps create Ingresses.
     argocd.argoproj.io/sync-wave: "-3"
   finalizers:
     - resources-finalizer.argocd.argoproj.io
@@ -12,20 +11,20 @@ spec:
   project: platform
 
   sources:
-    - repoURL: https://kubernetes.github.io/ingress-nginx
-      chart: ingress-nginx
-      targetRevision: "4.12.x"
+    - repoURL: https://traefik.github.io/charts
+      chart: traefik
+      targetRevision: "33.x"
       helm:
-        releaseName: ingress-nginx
+        releaseName: traefik
         valueFiles:
-          - $values/helm/platform/nginx-ingress/values-dev.yaml
+          - $values/helm/platform/traefik/values-dev.yaml
     - repoURL: https://github.com/mb-news-summary/news-feed-infra.git
       targetRevision: main
       ref: values
 
   destination:
     server: https://kubernetes.default.svc
-    namespace: ingress-nginx
+    namespace: traefik
 
   syncPolicy:
     automated:
