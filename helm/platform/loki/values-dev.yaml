@@ -1,0 +1,41 @@
+# Loki — log aggregation and storage (replaces Elasticsearch + Kibana).
+# SingleBinary mode: one pod, filesystem storage. Simple and cheap for dev.
+# Logs are queried directly from Grafana (no separate UI needed).
+
+deploymentMode: SingleBinary
+
+loki:
+  auth_enabled: false   # No authentication — open for dev
+  commonConfig:
+    replication_factor: 1
+  storage:
+    type: filesystem
+
+singleBinary:
+  replicas: 1
+  persistence:
+    enabled: true
+    size: 10Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# Disable all distributed-mode components
+read:
+  replicas: 0
+write:
+  replicas: 0
+backend:
+  replicas: 0
+
+# Disable the nginx gateway — not needed for dev
+gateway:
+  enabled: false
+
+# Disable Minio — using filesystem storage
+minio:
+  enabled: false

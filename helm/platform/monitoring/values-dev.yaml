@@ -70,6 +70,12 @@ grafana:
   # They cover: cluster health, node resources, pod resources, networking.
   defaultDashboardsEnabled: true
 
+  additionalDataSources:
+    - name: Loki
+      type: loki
+      url: http://loki.logging:3100
+      access: proxy
+
   # Ingress with TLS. Replace marianbodnar.uk with your Cloudflare domain.
   ingress:
     enabled: true

@@ -1,0 +1,18 @@
+# Promtail — log collector DaemonSet (replaces Fluent Bit).
+# Tails container logs from /var/log/pods, enriches with K8s metadata,
+# and ships to Loki.
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+config:
+  clients:
+    - url: http://loki.logging:3100/loki/api/v1/push
+
+tolerations:
+  - operator: Exists
