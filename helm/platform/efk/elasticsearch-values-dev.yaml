@@ -79,12 +79,11 @@ esConfig:
     # discovery warning and bypasses bootstrap checks.
     discovery.type: single-node
 
-# Override any Docker-image-level env vars that re-enable security.
-extraEnvs:
-  - name: xpack.security.enabled
-    value: "false"
-  - name: ELASTIC_PASSWORD
-    value: ""
+# The chart always creates an ELASTIC_PASSWORD secret and injects it into the
+# probe script. Do NOT override it with an empty string — the probe checks for
+# its presence and exits if missing. With security disabled in esConfig the
+# password is never verified by ES anyway, so letting the chart manage it is
+# the correct approach.
 
 # ---------------------------------------------------------------------------
 # Networking
