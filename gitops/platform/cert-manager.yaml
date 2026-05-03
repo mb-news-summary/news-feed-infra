@@ -15,7 +15,7 @@ spec:
   sources:
     - repoURL: https://charts.jetstack.io
       chart: cert-manager
-      targetRevision: "v1.17.x"
+      targetRevision: "v1.17.4"
       helm:
         releaseName: cert-manager
         valueFiles:
@@ -34,3 +34,4 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
+      - ServerSideApply=true

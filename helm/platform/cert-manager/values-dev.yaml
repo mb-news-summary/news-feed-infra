@@ -14,7 +14,9 @@
 #   Let's Encrypt reads the TXT record → issues certificate
 #   cert-manager stores cert in a K8s Secret → nginx-ingress serves it
 
-installCRDs: true   # install CRDs as part of the Helm release
+crds:
+  enabled: true  # installCRDs was renamed in cert-manager v1.15+
+  keep: true
 
 replicaCount: 1
 
