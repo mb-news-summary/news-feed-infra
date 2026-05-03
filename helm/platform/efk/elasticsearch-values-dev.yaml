@@ -75,9 +75,10 @@ esConfig:
     xpack.security.transport.ssl.enabled: false
     cluster.name: "omnifeed-logging"
     network.host: 0.0.0.0
-    # Tells ES it will never have peers — silences the headless-service
-    # discovery warning and bypasses bootstrap checks.
-    discovery.type: single-node
+    # NOTE: do NOT add discovery.type: single-node here.
+    # The Helm chart always injects cluster.initial_master_nodes, which ES
+    # rejects with a fatal error when discovery.type=single-node is set.
+    # The headless-service discovery WARN is harmless — the cluster forms fine.
 
 # The chart always creates an ELASTIC_PASSWORD secret and injects it into the
 # probe script. Do NOT override it with an empty string — the probe checks for
