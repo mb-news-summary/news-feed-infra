@@ -1,32 +1,14 @@
 # helm/platform/efk/elasticsearch-values-dev.yaml
 #
-# Values for Elasticsearch — the log storage and search engine.
-#
-# We use the official Elastic Helm chart (not Bitnami) because it's maintained
-# by Elastic and maps 1:1 to the upstream release cadence.
-#
-# Install with:
-#   helm repo add elastic https://helm.elastic.co
-#   helm repo update
-#   kubectl create namespace logging
-#   helm install elasticsearch elastic/elasticsearch \
-#     -f elasticsearch-values-dev.yaml -n logging
+# ES 8.x runs with security (HTTPS + authentication) enabled by default.
+# We accept this and configure Kibana and Fluent Bit to connect securely.
+# The chart auto-generates the elastic password in the
+# `elasticsearch-master-credentials` secret — Kibana and Fluent Bit read it
+# from there via extraEnvs.
 
-# ---------------------------------------------------------------------------
-# Cluster topology
-# ---------------------------------------------------------------------------
-# For dev: single-node Elasticsearch. No replicas, no dedicated master/data
-# split. This saves resources but has NO resilience — acceptable for dev.
-# For prod: use 3 master + 2 data + 1 ingest minimum.
 replicas: 1
-
-# Minimum master nodes — with 1 replica, set to 1.
-# This avoids split-brain (impossible with 1 node anyway).
 minimumMasterNodes: 1
 
-# ---------------------------------------------------------------------------
-# Resources — keep small for dev
-# ---------------------------------------------------------------------------
 resources:
   requests:
     cpu: 200m
@@ -35,76 +17,21 @@ resources:
     cpu: 1000m
     memory: 1Gi
 
-# JVM heap = half the memory limit. 512m is the minimum viable for dev.
-# Increase to -Xmx1g if you see OOMKilled events on the ES pod.
 esJavaOpts: "-Xmx512m -Xms512m"
 
-# ---------------------------------------------------------------------------
-# Storage
-# ---------------------------------------------------------------------------
 volumeClaimTemplate:
   accessModes: ["ReadWriteOnce"]
   resources:
     requests:
       storage: 10Gi
 
-# ---------------------------------------------------------------------------
-# Security — disabled for dev simplicity
-# ---------------------------------------------------------------------------
-# ES 8.x enables security by default in its Docker image. Three layers are
-# needed to fully disable it:
-#   1. protocol: http — chart uses HTTP for liveness/readiness probes
-#   2. esConfig — writes settings into elasticsearch.yml in the container
-#   3. extraEnvs — overrides any env-var defaults baked into the Docker image
-#
-# IMPORTANT: if the PVC was created while security was still on, the keystore
-# and TLS certs persisted to disk will keep security enabled on restart.
-# Delete the PVC and re-sync to reinitialise with a clean data directory:
-#
-#   kubectl delete statefulset elasticsearch-master -n logging --cascade=orphan
-#   kubectl delete pvc elasticsearch-master-elasticsearch-master-0 -n logging
-#   kubectl rollout restart statefulset/elasticsearch-master -n logging
-#   # or just re-sync the ArgoCD app
-protocol: http
-
-esConfig:
-  elasticsearch.yml: |
-    xpack.security.enabled: false
-    xpack.security.enrollment.enabled: false
-    xpack.security.http.ssl.enabled: false
-    xpack.security.transport.ssl.enabled: false
-    cluster.name: "omnifeed-logging"
-    network.host: 0.0.0.0
-    # NOTE: do NOT add discovery.type: single-node here.
-    # The Helm chart always injects cluster.initial_master_nodes, which ES
-    # rejects with a fatal error when discovery.type=single-node is set.
-    # The headless-service discovery WARN is harmless — the cluster forms fine.
-
-# The chart injects `xpack.security.enabled: true` as a container env var,
-# which takes precedence over esConfig (elasticsearch.yml). We override it
-# here by appending our own value — extraEnvs are added AFTER chart defaults
-# so our `false` wins. Do NOT touch ELASTIC_PASSWORD; the probe requires it.
-extraEnvs:
-  - name: "xpack.security.enabled"
-    value: "false"
-
-# ---------------------------------------------------------------------------
-# Networking
-# ---------------------------------------------------------------------------
 service:
   type: ClusterIP
 
-# httpPort is the REST API port that Kibana and Fluent Bit connect to.
 httpPort: 9200
 transportPort: 9300
 
-# ---------------------------------------------------------------------------
-# Pod settings
-# ---------------------------------------------------------------------------
-# Elasticsearch needs vm.max_map_count=262144. The init container sets this.
 sysctlInitContainer:
   enabled: true
 
-# Anti-affinity: "soft" allows multiple ES pods on the same node in dev.
-# Use "hard" in prod to spread across nodes.
 antiAffinity: "soft"

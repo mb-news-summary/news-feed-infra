@@ -1,24 +1,9 @@
 # helm/platform/efk/kibana-values-dev.yaml
 #
-# Values for Kibana — the log visualization UI.
-#
-# Kibana connects to Elasticsearch and provides:
-#   - Log search and filtering (Discover tab)
-#   - Dashboards and visualizations
-#   - Index pattern management
-#   - Saved queries and alerts
-#
-# Install with:
-#   helm install kibana elastic/kibana \
-#     -f kibana-values-dev.yaml -n logging
-#
-# Access Kibana:
-#   kubectl -n logging port-forward svc/kibana-kibana 5601:5601
-#   Open http://localhost:5601
+# Kibana connects to Elasticsearch over HTTPS using the auto-generated
+# elastic password from the `elasticsearch-master-credentials` secret.
+# SSL certificate verification is disabled (self-signed cert in dev).
 
-# ---------------------------------------------------------------------------
-# Resources — keep modest for dev
-# ---------------------------------------------------------------------------
 resources:
   requests:
     cpu: 200m
@@ -27,61 +12,52 @@ resources:
     cpu: 500m
     memory: 1Gi
 
-# ---------------------------------------------------------------------------
-# Elasticsearch connection
-# ---------------------------------------------------------------------------
-# Points to the Elasticsearch service created by the ES Helm chart.
-elasticsearchHosts: "http://elasticsearch-master:9200"
-
-# ---------------------------------------------------------------------------
-# Replicas — 1 for dev
-# ---------------------------------------------------------------------------
 replicas: 1
 
 # ---------------------------------------------------------------------------
-# Service
+# Elasticsearch connection — HTTPS with credentials
 # ---------------------------------------------------------------------------
+elasticsearchHosts: "https://elasticsearch-master:9200"
+
+# Inject the elastic password from the secret the ES chart creates.
+extraEnvs:
+  - name: ELASTICSEARCH_USERNAME
+    value: elastic
+  - name: ELASTICSEARCH_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: elasticsearch-master-credentials
+        key: password
+
 service:
   type: ClusterIP
   port: 5601
 
-# Ingress with TLS. Replace marianbodnar.uk with your Cloudflare domain.
 ingress:
   enabled: true
   ingressClassName: traefik
   hosts:
-    - host: kibana.marianbodnar.uk # ← replace
+    - host: kibana.marianbodnar.uk
       paths:
         - path: /
   tls:
     - secretName: kibana-tls
       hosts:
-        - kibana.marianbodnar.uk # ← replace
+        - kibana.marianbodnar.uk
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
 
-# ---------------------------------------------------------------------------
-# Kibana configuration
-# ---------------------------------------------------------------------------
 kibanaConfig:
   kibana.yml: |
     server.name: kibana
     server.host: "0.0.0.0"
-    # Disable security for dev (matches ES xpack.security.enabled: false).
-    # In prod, enable TLS and RBAC.
-    xpack.security.enabled: false
-    # Disable telemetry
+    # Self-signed cert in dev — skip verification.
+    elasticsearch.ssl.verificationMode: none
     telemetry.optIn: false
     telemetry.enabled: false
 
-# ---------------------------------------------------------------------------
-# Health check
-# ---------------------------------------------------------------------------
 healthCheckPath: "/app/kibana"
 
-# ---------------------------------------------------------------------------
-# Readiness probe — give Kibana time to start (it's slow)
-# ---------------------------------------------------------------------------
 readinessProbe:
   initialDelaySeconds: 30
   periodSeconds: 10
