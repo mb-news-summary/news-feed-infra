@@ -73,8 +73,9 @@ metrics:
     addEntryPointsLabels: true
     addRoutersLabels: true
     addServicesLabels: true
+    # ServiceMonitor requires monitoring.coreos.com/v1 CRD which is installed
+    # by kube-prometheus-stack (a later sync wave). Disabled here to avoid a
+    # Helm template failure at ArgoCD manifest generation time. Prometheus
+    # scrapes the /metrics endpoint via its global scrape config instead.
     serviceMonitor:
-      enabled: true
-      namespace: monitoring
-      additionalLabels:
-        release: monitoring
+      enabled: false
