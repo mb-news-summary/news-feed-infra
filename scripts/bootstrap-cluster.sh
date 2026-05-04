@@ -1,41 +1,27 @@
 #!/usr/bin/env bash
 # scripts/bootstrap-cluster.sh
 #
-# Full cluster bootstrap: namespaces → secrets → ArgoCD → GitOps.
-# Run this ONCE after `./scripts/infra-deploy.sh apply` has completed.
-# ArgoCD takes over after step 5 and manages everything else automatically.
-#
-# GCP Secret Manager secrets + GitHub K8s secret are handled by:
-#   scripts/gsm-secrets-version.sh
-# The only additional secret this script prompts for is the Cloudflare
-# API token (used by cert-manager for Let's Encrypt DNS-01 challenges).
+# Full cluster bootstrap: namespaces → secrets → ArgoCD → GitOps → DNS.
+# Run ONCE after `./scripts/infra-deploy.sh apply` has completed.
 #
 # Usage:
 #   ./scripts/bootstrap-cluster.sh
 #
 # Pre-set to skip interactive prompts:
-#   GCP_PROJECT, GKE_CLUSTER, GKE_ZONE, CLOUDFLARE_API_TOKEN
-#
-# What it deploys (via ArgoCD sync waves):
-#   wave -3  cert-manager, nginx-ingress
-#   wave -2  cluster-issuer (Let's Encrypt+Cloudflare), ESO, ARC controller
-#   wave -1  ARC runner set
-#   wave  0  Prometheus+Grafana, Elasticsearch, omnifeed app
-#   wave  1  Kibana, Fluent Bit
+#   GCP_PROJECT, GKE_CLUSTER, GKE_ZONE, CLOUDFLARE_API_TOKEN, CF_API_TOKEN
 
 set -euo pipefail
 
-# ── Colors ──────────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 CYAN='\033[0;36m'; BOLD='\033[1m'; RESET='\033[0m'
 
-step()   { echo -e "\n${CYAN}${BOLD}════════════════════════════════════${RESET}"; \
-           echo -e "${CYAN}${BOLD}  $*${RESET}"; \
-           echo -e "${CYAN}${BOLD}════════════════════════════════════${RESET}"; }
-ok()     { echo -e "${GREEN}✓ $*${RESET}"; }
-warn()   { echo -e "${YELLOW}⚠ $*${RESET}"; }
-info()   { echo -e "  $*"; }
-die()    { echo -e "${RED}✗ $*${RESET}"; exit 1; }
+step() { echo -e "\n${CYAN}${BOLD}════════════════════════════════════${RESET}";
+         echo -e "${CYAN}${BOLD}  $*${RESET}";
+         echo -e "${CYAN}${BOLD}════════════════════════════════════${RESET}"; }
+ok()   { echo -e "${GREEN}✓ $*${RESET}"; }
+warn() { echo -e "${YELLOW}⚠ $*${RESET}"; }
+info() { echo -e "  $*"; }
+die()  { echo -e "${RED}✗ $*${RESET}"; exit 1; }
 
 prompt() {
   local var=$1 msg=$2 default=${3:-}
@@ -57,10 +43,10 @@ secret_prompt() {
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-# ── Step 0: Prerequisites ────────────────────────────────────────────────────
+# ── Step 0: Prerequisites ─────────────────────────────────────────────────────
 step "0 / 7  Checking prerequisites"
 
-for cmd in gcloud kubectl helm openssl; do
+for cmd in gcloud kubectl helm openssl curl jq; do
   command -v "$cmd" &>/dev/null || die "$cmd not found — please install it."
   ok "$cmd"
 done
@@ -83,21 +69,17 @@ step "2 / 7  Namespaces"
 kubectl apply -f "$REPO_ROOT/k8s/namespaces.yaml"
 ok "All namespaces created (idempotent)"
 
-# ── Step 3: Secrets ────────────────────────────────────────────────────────────
+# ── Step 3: Secrets ───────────────────────────────────────────────────────────
 step "3 / 7  Secrets"
 
-# 3a — GCP Secret Manager + GitHub K8s secret (delegated to dedicated script)
 info "Running gsm-secrets-version.sh (GCP Secret Manager + arc-github-secret)..."
 bash "$SCRIPT_DIR/gsm-secrets-version.sh"
 ok "GCP secrets + arc-github-secret done"
 
-# 3b — Cloudflare API token (not in gsm-secrets-version.sh — stored as K8s secret
-#      in the cert-manager namespace so cert-manager can use it for DNS-01 challenges)
 info ""
 info "--- Cloudflare API token ---"
 info "Create at: Cloudflare → My Profile → API Tokens → Create Token"
-info "Template:  'Edit zone DNS'"
-info "Permission: Zone → DNS → Edit  (scope to your domain only)"
+info "Template:  'Edit zone DNS' — Zone → DNS → Edit"
 echo ""
 secret_prompt CLOUDFLARE_API_TOKEN "Cloudflare API token"
 
@@ -129,73 +111,61 @@ ok "ArgoCD admin password: ${ARGOCD_PASS}"
 # ── Step 5: GitOps bootstrap ──────────────────────────────────────────────────
 step "5 / 7  GitOps bootstrap"
 
-info "Applying ArgoCD Projects (access control boundaries)..."
+info "Applying ArgoCD Projects..."
 kubectl apply -f "$REPO_ROOT/gitops/projects/"
 ok "Projects applied"
 
 info "Applying root App-of-Apps..."
 kubectl apply -f "$REPO_ROOT/gitops/bootstrap/app-of-apps.yaml"
-ok "App-of-Apps applied"
-
-info ""
-info "ArgoCD will now deploy everything in sync-wave order:"
-info "  wave -3 → cert-manager, nginx-ingress"
-info "  wave -2 → cluster-issuer, ESO, ARC controller"
+ok "App-of-Apps applied — ArgoCD will now deploy in sync-wave order:"
+info "  wave -3 → cert-manager, Traefik (LoadBalancer)"
+info "  wave -2 → cluster-issuer (Let's Encrypt), ESO, ARC controller"
 info "  wave -1 → ARC runner set"
-info "  wave  0 → Prometheus+Grafana, Elasticsearch, omnifeed"
-info "  wave  1 → Kibana, Fluent Bit"
+info "  wave  0 → Prometheus+Grafana, Loki, omnifeed app"
+info "  wave  1 → Promtail"
 
-# ── Step 6: Wait for nginx-ingress external IP ───────────────────────────────
-step "6 / 7  Waiting for nginx-ingress external IP"
+# ── Step 6: Wait for Traefik external IP then set DNS ─────────────────────────
+step "6 / 7  DNS setup"
 
-info "nginx-ingress creates a GCP LoadBalancer — this takes 1-3 minutes..."
+info "Waiting for Traefik LoadBalancer IP (1-3 min)..."
 echo -n "  Waiting"
 for i in $(seq 1 60); do
-  IP=$(kubectl get svc ingress-nginx-controller -n ingress-nginx \
+  IP=$(kubectl get svc traefik -n traefik \
     -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
   if [[ -n "$IP" ]]; then
     echo ""
-    ok "External IP: ${IP}"
-    echo ""
-    warn "ACTION REQUIRED — Add these DNS records in Cloudflare:"
-    echo ""
-    printf "  %-8s %-30s %-16s %s\n" "Type" "Name" "Content" "Proxy"
-    printf "  %-8s %-30s %-16s %s\n" "----" "----" "-------" "-----"
-    printf "  %-8s %-30s %-16s %s\n" "A" "argocd"  "$IP" "🟠 Proxied"
-    printf "  %-8s %-30s %-16s %s\n" "A" "grafana" "$IP" "🟠 Proxied"
-    printf "  %-8s %-30s %-16s %s\n" "A" "kibana"  "$IP" "🟠 Proxied"
-    printf "  %-8s %-30s %-16s %s\n" "A" "app"     "$IP" "🟠 Proxied"
-    printf "  %-8s %-30s %-16s %s\n" "A" "api"     "$IP" "🟠 Proxied"
-    echo ""
-    warn "Cloudflare SSL/TLS mode must be set to: Full (strict)"
-    warn "Dashboard: your domain → SSL/TLS → Overview → Full (strict)"
+    ok "Traefik external IP: ${IP}"
     break
   fi
   echo -n "."
   sleep 5
 done
+
 if [[ -z "${IP:-}" ]]; then
-  warn "nginx-ingress not ready yet. Check later with:"
-  warn "  kubectl get svc ingress-nginx-controller -n ingress-nginx"
+  warn "Traefik not ready yet — DNS setup skipped. Run setup-dns.sh manually later:"
+  warn "  CF_API_TOKEN=<token> ./scripts/setup-dns.sh"
+else
+  info "Running setup-dns.sh to create Cloudflare DNS records..."
+  export CF_API_TOKEN="$CLOUDFLARE_API_TOKEN"
+  bash "$SCRIPT_DIR/setup-dns.sh"
 fi
 
-# ── Step 7: Summary ────────────────────────────────────────────────────────────
+# ── Step 7: Summary ───────────────────────────────────────────────────────────
 step "7 / 7  Done"
 
 echo ""
 echo -e "${BOLD}Credentials:${RESET}"
 echo "  ArgoCD admin password : ${ARGOCD_PASS}"
-echo "  App secrets           : see scripts/gsm-secrets-version.sh"
+echo "  Grafana               : admin / omnifeed-dev-grafana"
 echo ""
-echo -e "${BOLD}Watch ArgoCD sync progress:${RESET}"
+echo -e "${BOLD}Watch ArgoCD sync:${RESET}"
 echo "  kubectl get applications -n argocd -w"
 echo ""
-echo -e "${BOLD}Once DNS is set and cert-manager issues certs, access via:${RESET}"
+echo -e "${BOLD}Services (once DNS + TLS are ready):${RESET}"
 echo "  https://argocd.marianbodnar.uk"
-echo "  https://grafana.marianbodnar.uk"
-echo "  https://kibana.marianbodnar.uk"
+echo "  https://grafana.marianbodnar.uk  (logs via Explore → Loki)"
 echo "  https://app.marianbodnar.uk"
 echo ""
-echo -e "${BOLD}Port-forward fallback (while DNS propagates):${RESET}"
+echo -e "${BOLD}Port-forward fallback:${RESET}"
 echo "  kubectl -n argocd     port-forward svc/argocd-server     8080:80"
 echo "  kubectl -n monitoring port-forward svc/monitoring-grafana 3000:80"

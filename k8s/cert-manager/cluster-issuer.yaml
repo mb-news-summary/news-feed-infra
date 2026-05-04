@@ -23,7 +23,7 @@ spec:
     server: https://acme-v02.api.letsencrypt.org/directory
 
     # Your email — Let's Encrypt sends expiry warnings here.
-    email: youremail@example.com   # ← replace with your real email
+    email: bodnarmarian14@gmail.com
 
     # Where cert-manager stores the ACME account private key.
     privateKeySecretRef:

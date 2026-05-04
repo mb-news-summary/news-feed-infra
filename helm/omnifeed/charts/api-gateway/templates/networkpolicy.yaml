@@ -18,7 +18,7 @@ spec:
               app: frontend
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: ingress-nginx
+              kubernetes.io/metadata.name: traefik
       ports:
         - port: {{ .Values.port }}
           protocol: TCP

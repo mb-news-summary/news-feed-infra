@@ -118,18 +118,13 @@ notifications:
 # Config: repositories and project
 # ---------------------------------------------------------------------------
 configs:
-  # Repositories ArgoCD can pull from.
-  repositories:
-    # Your infra repo (contains the Helm charts).
-    news-feed-infra:
-      url: https://github.com/your-org/news-feed-infra.git
-      # For private repos, use an SSH key or GitHub App:
-      # sshPrivateKeySecret:
-      #   name: argocd-repo-creds
-      #   key: sshPrivateKey
+  cm:
+    # Default UI theme for all users.
+    ui.theme: "dark"
 
-      # Default project settings.
+  repositories:
+    news-feed-infra:
+      url: https://github.com/mb-news-summary/news-feed-infra.git
+
   params:
-    # Reconciliation interval — how often ArgoCD checks git for changes.
-    # 3 minutes is responsive enough for dev.
     timeout.reconciliation: 180s

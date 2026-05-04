@@ -3,6 +3,7 @@
   "build": {
     "dockerfile": "Dockerfile"
   },
+  "runArgs": ["--dns=8.8.8.8"],
   "remoteUser": "ubuntu",
   "mounts": [
     "source=${localEnv:HOME}/.config/gcloud,target=/home/ubuntu/.config/gcloud,type=bind",
